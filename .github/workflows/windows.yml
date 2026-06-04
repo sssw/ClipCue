@@ -1,0 +1,64 @@
+name: windows-build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Windows ${{ matrix.arch }} ${{ matrix.config }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, Win32]
+        config: [Release]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          cmake -S . -B build/${{ matrix.arch }} `
+            -A ${{ matrix.arch }} `
+            -DCMAKE_BUILD_TYPE=${{ matrix.config }} `
+            -DPATHCUE_BUILD_TESTS=ON
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build/${{ matrix.arch }} --config ${{ matrix.config }} --parallel
+
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir build/${{ matrix.arch }} -C ${{ matrix.config }} --output-on-failure
+
+      - name: Installer smoke test
+        shell: pwsh
+        run: |
+          $bin = "build/${{ matrix.arch }}/${{ matrix.config }}"
+          $target = Join-Path $env:TEMP "PathCueCiInstall-${{ matrix.arch }}"
+          & "$bin/PathCue.Installer.exe" /install /silent /dir $target
+          if (!(Test-Path (Join-Path $target "PathCue.UI.exe"))) { throw "PathCue.UI.exe was not installed" }
+          & (Join-Path $target "PathCue.Installer.exe") /uninstall /silent /dir $target
+
+      - name: Stage artifacts
+        shell: pwsh
+        run: |
+          $stage = "dist/PathCue-${{ matrix.arch }}-${{ matrix.config }}"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "build/${{ matrix.arch }}/${{ matrix.config }}/PathCue.*.exe" $stage -ErrorAction SilentlyContinue
+          Copy-Item "build/${{ matrix.arch }}/${{ matrix.config }}/PathCue.*.dll" $stage -ErrorAction SilentlyContinue
+          Copy-Item LICENSE,NOTICE,README.md $stage
+          Copy-Item scripts $stage -Recurse
+          Copy-Item docs $stage -Recurse
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PathCue-${{ matrix.arch }}-${{ matrix.config }}
+          path: dist/PathCue-${{ matrix.arch }}-${{ matrix.config }}.zip

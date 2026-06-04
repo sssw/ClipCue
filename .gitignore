@@ -1,0 +1,14 @@
+build/
+out/
+.vs/
+*.user
+*.suo
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.log
+*.db
+*.db-wal
+*.db-shm
+*.zip
