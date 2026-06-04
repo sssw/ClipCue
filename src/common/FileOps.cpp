@@ -138,7 +138,7 @@ JobResult ExecuteFileOperationJob(const JobRequest& job, HWND owner) {
   }
 
   fo->SetOwnerWindow(owner);
-  FILEOPERATION_FLAGS flags = static_cast<FILEOPERATION_FLAGS>(FOF_NOCONFIRMMKDIR | FOFX_SHOWELEVATIONPROMPT);
+  DWORD flags = FOF_NOCONFIRMMKDIR | FOFX_SHOWELEVATIONPROMPT;
   fo->SetOperationFlags(flags);
 
   FileOperationSink* sink = new FileOperationSink();
