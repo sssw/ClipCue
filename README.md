@@ -1,8 +1,8 @@
 # PathCue
 
-PathCue is a Windows Explorer enhancement that adds context-menu commands for fast file/folder copy and move operations. It learns successful PathCue operations, prioritizes targets that match the current source path, supports conflict policies, UAC elevation fallback, and a per-user DPAPI-encrypted history store.
+PathCue is a Windows Explorer enhancement that adds context-menu commands for fast file/folder copy and move operations. It learns successful PathCue and external Explorer operations, prioritizes targets that match the current source path, surfaces detected target folders as quick suggestions, supports conflict policies, UAC elevation fallback, and a per-user DPAPI-encrypted history store.
 
-> Status: engineering preview. The repository is designed to compile on GitHub Actions `windows-latest` with CMake and Visual Studio. The classic Explorer context menu, encrypted append-only history store, worker, elevated helper, settings CLI, native control panel UI, per-user installer, cache generation, and core file operation path are implemented. Clipboard learning, USN journal learning, SQLCipher, and Windows 11 `IExplorerCommand` are documented extension points and intentionally disabled in the default build.
+> Status: engineering preview. The repository is designed to compile on GitHub Actions `windows-latest` with CMake and Visual Studio. The classic Explorer context menu, encrypted append-only history store, worker, elevated helper, settings CLI, native control panel UI, per-user background monitor with tray icon, external Explorer copy/cut/paste learning, per-user installer, cache generation, and core file operation path are implemented. USN journal learning, SQLCipher, and Windows 11 `IExplorerCommand` are documented extension points and intentionally disabled in the default build.
 
 ## License
 
@@ -46,7 +46,7 @@ Unzip the artifact and run:
 .\PathCue.Installer.exe
 ```
 
-The installer performs a per-user install by default, registers the classic Explorer context menu under `HKCU`, creates Start Menu shortcuts, and leaves user data under `%LOCALAPPDATA%\PathCue` intact during uninstall. See [docs/INSTALLER_UI.md](docs/INSTALLER_UI.md).
+The installer performs a per-user install by default, registers the classic Explorer context menu under `HKCU`, enables `PathCue.Monitor.exe` at sign-in through the current-user Run key, starts the tree tray icon, creates Start Menu shortcuts, and leaves user data under `%LOCALAPPDATA%\PathCue` intact during uninstall. See [docs/INSTALLER_UI.md](docs/INSTALLER_UI.md).
 
 Open the control panel with:
 
@@ -87,13 +87,15 @@ powershell -ExecutionPolicy Bypass -File ..\..\scripts\unregister-classic.ps1 -B
 | `PathCue.Agent.exe` | job execution, folder picker, history writes | Implemented |
 | `PathCue.Worker.exe` | direct job execution | Implemented |
 | `PathCue.Elevated.exe` | UAC helper | Implemented |
-| `PathCue.Settings.exe` | pinned targets, cleanup, cache | Implemented CLI |
+| `PathCue.Settings.exe` | pinned and detected targets, cleanup, cache | Implemented CLI |
+| `PathCue.Monitor.exe` | tray monitor, external clipboard/shell-change learning | Implemented |
 | `PathCue.UI.exe` | native control panel | Implemented GUI |
 | `PathCue.Installer.exe` | per-user installer/uninstaller | Implemented GUI + silent CLI |
 | DPAPI encrypted history store | per-user local history | Implemented |
-| Source-path prioritized target ranking | history/pinned route scoring | Implemented |
+| Source-path prioritized target ranking | history/pinned/detected route scoring | Implemented |
 | Recycle-before-overwrite | Shell recycle fallback | Implemented |
-| Clipboard/USN/CopyHook learning | external operation inference | Extension point |
+| Clipboard/shell-change learning | external Explorer copy/cut/paste inference and quick suggestions | Implemented |
+| USN/CopyHook learning | optional external operation enhancement | Extension point |
 | SQLCipher backend | full SQLite encryption | Extension point |
 | Windows 11 modern menu | `IExplorerCommand` | Extension point |
 
@@ -124,6 +126,6 @@ scripts\register-classic.ps1 -BuildDir build\Release
 
 ## Security notes
 
-The default store is `%LOCALAPPDATA%\PathCue\Data\pathcue.db`. Each record is protected with Windows DPAPI `CurrentUser`. The legacy menu cache is plaintext under `%LOCALAPPDATA%\PathCue\Cache\menu_cache.tsv` because Explorer context-menu handlers must not open the encrypted store or block on decryption. You can delete this file to disable cached quick-target display; the menu still offers “Move to...” and “Copy to...”.
+The default store is `%LOCALAPPDATA%\PathCue\Data\pathcue.db`. Each record is protected with Windows DPAPI `CurrentUser`. The legacy menu cache is plaintext under `%LOCALAPPDATA%\PathCue\Cache\menu_cache.tsv` because Explorer context-menu handlers must not open the encrypted store or block on decryption. It includes pinned targets and target folders detected from copy/move/clipboard activity so `PathCue Move to...` and `PathCue Copy to...` can show quick suggestions. You can delete this file to disable cached quick-target display; the menu still offers both submenus with a manual target picker.
 
 See [docs/SECURITY.md](docs/SECURITY.md).

@@ -50,6 +50,8 @@ class HistoryDatabase {
   std::vector<MenuCandidate> GetCandidates(const std::wstring& sourceParent,
                                            OperationKind op,
                                            std::size_t maxItems = 8) const;
+  std::vector<MenuCandidate> GetGlobalCandidates(OperationKind op,
+                                                 std::size_t maxItems = 8) const;
   bool WriteMenuCache(const std::wstring& cachePath = L"", std::wstring* error = nullptr) const;
   bool CleanupExpired(int operationDays, int routeDays, std::wstring* error = nullptr);
 

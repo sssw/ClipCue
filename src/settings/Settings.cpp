@@ -15,6 +15,20 @@ void Usage() {
              << L"  PathCue.Settings cleanup [days]\n"
              << L"  PathCue.Settings build-cache\n";
 }
+
+void PrintCandidates(const HistoryDatabase& db, OperationKind op, const std::wstring& title) {
+  auto candidates = db.GetGlobalCandidates(op, 8);
+  std::wcout << title << L":\n";
+  if (candidates.empty()) {
+    std::wcout << L"  (none)\n";
+    return;
+  }
+  for (const auto& c : candidates) {
+    std::wcout << L"  [" << (c.pinned ? L"pinned" : L"detected") << L"] "
+               << (c.label.empty() ? FormatMenuLabel(c.destParent) : c.label)
+               << L" -> " << c.destParent << L"\n";
+  }
+}
 }
 
 int wmain() {
@@ -35,6 +49,8 @@ int wmain() {
     for (const auto& p : db.pinnedTargets()) {
       std::wcout << L"  [" << ToString(p.op) << L"] " << p.destParent << L"\n";
     }
+    PrintCandidates(db, OperationKind::Move, L"PathCue Move to suggestions");
+    PrintCandidates(db, OperationKind::Copy, L"PathCue Copy to suggestions");
     return 0;
   }
 

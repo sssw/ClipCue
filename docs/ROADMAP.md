@@ -11,6 +11,8 @@
 - UAC elevated helper.
 - GitHub Actions Windows build.
 - Native control panel UI.
+- Per-user background monitor and tray icon.
+- Clipboard/shell-change learning for external Explorer copy, cut, paste, and move routes.
 - Per-user installer/uninstaller.
 
 ## 0.2 storage and privacy
@@ -21,11 +23,11 @@
 - Secure compaction.
 - Password key slot.
 
-## 0.3 external learning
+## 0.3 external learning hardening
 
-- Clipboard monitor: `CF_HDROP` and preferred drop effect.
-- File system event collector: `ReadDirectoryChangesW`.
-- Correlation engine and confidence scoring.
+- Optional USN journal reader for recovery after monitor downtime.
+- Optional CopyHook investigation for folder-specific policy scenarios.
+- Operation journal viewer and per-record deletion.
 
 ## 0.4 Windows 11 modern shell
 

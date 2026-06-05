@@ -74,6 +74,9 @@ endif()
 add_executable(PathCue.Settings src/settings/Settings.cpp)
 target_link_libraries(PathCue.Settings PRIVATE pathcue_common)
 
+add_executable(PathCue.Monitor WIN32 src/monitor/Monitor.cpp)
+target_link_libraries(PathCue.Monitor PRIVATE pathcue_common shell32 gdi32)
+
 add_executable(PathCue.UI WIN32 src/ui/PathCueUI.cpp)
 target_link_libraries(PathCue.UI PRIVATE pathcue_common comctl32 comdlg32 ole32 shell32 shlwapi)
 
@@ -107,6 +110,7 @@ install(TARGETS
   PathCue.Worker
   PathCue.Elevated
   PathCue.Settings
+  PathCue.Monitor
   PathCue.UI
   PathCue.Installer
   PathCue.ShellClassic

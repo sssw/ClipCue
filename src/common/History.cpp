@@ -108,6 +108,29 @@ bool OpMatches(OperationKind requested, OperationKind candidate) {
   return requested == candidate;
 }
 
+std::wstring CandidateKey(const std::wstring& path) {
+  std::wstring key = NormalizePathForDisplay(path);
+  std::transform(key.begin(), key.end(), key.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+  return key;
+}
+
+void AddSupportedOperation(OperationKind op, bool* copy, bool* move) {
+  if (op == OperationKind::Copy) *copy = true;
+  else if (op == OperationKind::Move) *move = true;
+  else if (op == OperationKind::Both) {
+    *copy = true;
+    *move = true;
+  }
+}
+
+OperationKind CandidateOperation(OperationKind requested, bool copy, bool move) {
+  if (requested == OperationKind::Copy || requested == OperationKind::Move) return requested;
+  if (copy && move) return OperationKind::Both;
+  if (move) return OperationKind::Move;
+  if (copy) return OperationKind::Copy;
+  return OperationKind::Unknown;
+}
+
 int CommonPrefixPathDepth(const std::wstring& a, const std::wstring& b) {
   auto la = NormalizePathForDisplay(a);
   auto lb = NormalizePathForDisplay(b);
@@ -148,7 +171,7 @@ std::int64_t UnixNow() {
 std::wstring FormatMenuLabel(const std::wstring& path) {
   std::wstring p = NormalizePathForDisplay(path);
   if (p.size() <= 48) return p;
-  return L"…" + p.substr(p.size() - 47);
+  return L"..." + p.substr(p.size() - 45);
 }
 
 HistoryDatabase::HistoryDatabase(std::wstring storePath)
@@ -213,21 +236,25 @@ bool HistoryDatabase::RemovePinnedTarget(std::size_t index, std::wstring* error)
 
 std::vector<MenuCandidate> HistoryDatabase::GetCandidates(const std::wstring& sourceParent, OperationKind op, std::size_t maxItems) const {
   struct Agg {
-    OperationKind op = OperationKind::Unknown;
     std::wstring dest;
+    std::wstring label;
     double score = 0.0;
     int count = 0;
     bool pinned = false;
+    bool supportsCopy = false;
+    bool supportsMove = false;
   };
   std::map<std::wstring, Agg> agg;
   std::int64_t now = UnixNow();
-  std::wstring normalizedSource = NormalizePathForDisplay(sourceParent);
+  bool hasSource = !sourceParent.empty();
+  std::wstring normalizedSource = hasSource ? NormalizePathForDisplay(sourceParent) : L"";
 
   for (const auto& pin : pinned_) {
     if (!OpMatches(op, pin.op)) continue;
-    auto& a = agg[pin.destParent];
+    auto& a = agg[CandidateKey(pin.destParent)];
     a.dest = pin.destParent;
-    a.op = pin.op == OperationKind::Both ? op : pin.op;
+    if (a.label.empty()) a.label = pin.label;
+    AddSupportedOperation(pin.op, &a.supportsCopy, &a.supportsMove);
     a.pinned = true;
     a.score += 1000.0 + pin.priority;
   }
@@ -237,11 +264,11 @@ std::vector<MenuCandidate> HistoryDatabase::GetCandidates(const std::wstring& so
     if (r.result != L"success" && r.result != L"inferred") continue;
     double ageDays = static_cast<double>(now - r.timestamp) / 86400.0;
     double recency = std::exp(-ageDays / 90.0);
-    double exact = IsSamePathCaseInsensitive(normalizedSource, r.sourceParent) ? 1.0 : 0.0;
-    double ancestor = static_cast<double>(CommonPrefixPathDepth(normalizedSource, r.sourceParent));
-    auto& a = agg[r.destParent];
+    double exact = hasSource && IsSamePathCaseInsensitive(normalizedSource, r.sourceParent) ? 1.0 : 0.0;
+    double ancestor = hasSource ? static_cast<double>(CommonPrefixPathDepth(normalizedSource, r.sourceParent)) : 0.0;
+    auto& a = agg[CandidateKey(r.destParent)];
     a.dest = r.destParent;
-    a.op = r.op;
+    AddSupportedOperation(r.op, &a.supportsCopy, &a.supportsMove);
     a.count += 1;
     a.score += 700.0 * exact + 35.0 * ancestor + 90.0 * recency + 60.0 * r.confidence;
   }
@@ -249,9 +276,9 @@ std::vector<MenuCandidate> HistoryDatabase::GetCandidates(const std::wstring& so
   std::vector<MenuCandidate> out;
   for (const auto& [_, a] : agg) {
     MenuCandidate c;
-    c.op = a.op;
+    c.op = CandidateOperation(op, a.supportsCopy, a.supportsMove);
     c.destParent = a.dest;
-    c.label = FormatMenuLabel(a.dest);
+    c.label = a.label.empty() ? FormatMenuLabel(a.dest) : a.label;
     c.score = a.score + std::log(1.0 + a.count) * 70.0;
     c.pinned = a.pinned;
     if (DirectoryExists(c.destParent)) c.score += 30.0;
@@ -261,6 +288,10 @@ std::vector<MenuCandidate> HistoryDatabase::GetCandidates(const std::wstring& so
   std::sort(out.begin(), out.end(), [](const MenuCandidate& a, const MenuCandidate& b) { return a.score > b.score; });
   if (out.size() > maxItems) out.resize(maxItems);
   return out;
+}
+
+std::vector<MenuCandidate> HistoryDatabase::GetGlobalCandidates(OperationKind op, std::size_t maxItems) const {
+  return GetCandidates(L"", op, maxItems);
 }
 
 bool HistoryDatabase::WriteMenuCache(const std::wstring& cachePath, std::wstring* error) const {
@@ -287,14 +318,10 @@ bool HistoryDatabase::WriteMenuCache(const std::wstring& cachePath, std::wstring
       }
     }
   }
-  // Global pinned fallback.  Expand "both" into copy and move so the menu command is unambiguous.
-  for (const auto& pin : pinned_) {
-    std::wstring label = pin.label.empty() ? FormatMenuLabel(pin.destParent) : pin.label;
-    if (pin.op == OperationKind::Both) {
-      writeLine(L"*\tcopy\t" + label + L"\t" + pin.destParent);
-      writeLine(L"*\tmove\t" + label + L"\t" + pin.destParent);
-    } else {
-      writeLine(L"*\t" + ToString(pin.op) + L"\t" + label + L"\t" + pin.destParent);
+  for (auto kind : {OperationKind::Move, OperationKind::Copy}) {
+    auto candidates = GetGlobalCandidates(kind, 8);
+    for (const auto& c : candidates) {
+      writeLine(L"*\t" + ToString(kind) + L"\t" + c.label + L"\t" + c.destParent);
     }
   }
   return true;

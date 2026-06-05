@@ -165,7 +165,7 @@ std::vector<CacheEntry> LoadCache(const std::wstring& sourceParent) {
     e.label = p[2];
     e.dest = p[3];
     entries.push_back(e);
-    if (entries.size() >= 12) break;
+    if (entries.size() >= 32) break;
   }
   return entries;
 }
@@ -232,31 +232,17 @@ class PathCueShellExt : public IShellExtInit, public IContextMenu {
   HRESULT STDMETHODCALLTYPE QueryContextMenu(HMENU menu, UINT indexMenu, UINT idCmdFirst, UINT, UINT flags) override {
     if (flags & CMF_DEFAULTONLY) return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
     commands_.clear();
-    HMENU sub = CreatePopupMenu();
+    HMENU moveSub = CreatePopupMenu();
+    HMENU copySub = CreatePopupMenu();
     UINT id = idCmdFirst;
 
     std::wstring sourceParent = ParentPath(selected_.front());
     auto cache = LoadCache(sourceParent);
-    int added = 0;
-    for (const auto& e : cache) {
-      if (added >= 8) break;
-      Command cmd;
-      cmd.op = e.op;
-      cmd.dest = e.dest;
-      cmd.pick = false;
-      commands_.push_back(cmd);
-      std::wstring label = (e.op == L"move" ? L"Move to " : e.op == L"copy" ? L"Copy to " : L"To ") + e.label;
-      InsertMenuW(sub, added, MF_BYPOSITION | MF_STRING, id++, label.c_str());
-      ++added;
-    }
-    if (added) InsertMenuW(sub, added++, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+    AddOperationSubmenu(moveSub, L"move", cache, id);
+    AddOperationSubmenu(copySub, L"copy", cache, id);
 
-    Command movePick; movePick.op = L"move"; movePick.pick = true; commands_.push_back(movePick);
-    InsertMenuW(sub, added++, MF_BYPOSITION | MF_STRING, id++, L"Move to..." );
-    Command copyPick; copyPick.op = L"copy"; copyPick.pick = true; commands_.push_back(copyPick);
-    InsertMenuW(sub, added++, MF_BYPOSITION | MF_STRING, id++, L"Copy to..." );
-
-    InsertMenuW(menu, indexMenu, MF_BYPOSITION | MF_POPUP, reinterpret_cast<UINT_PTR>(sub), L"PathCue");
+    InsertMenuW(menu, indexMenu, MF_BYPOSITION | MF_POPUP, reinterpret_cast<UINT_PTR>(moveSub), L"PathCue Move to...");
+    InsertMenuW(menu, indexMenu + 1, MF_BYPOSITION | MF_POPUP, reinterpret_cast<UINT_PTR>(copySub), L"PathCue Copy to...");
     return MAKE_HRESULT(SEVERITY_SUCCESS, 0, static_cast<USHORT>(commands_.size()));
   }
 
@@ -305,6 +291,47 @@ class PathCueShellExt : public IShellExtInit, public IContextMenu {
     std::wstring dest;
     bool pick = false;
   };
+
+  bool HasSeenDestination(const std::vector<std::wstring>& seen, const std::wstring& dest) const {
+    for (const auto& item : seen) {
+      if (StrCmpIW(item.c_str(), dest.c_str()) == 0) return true;
+    }
+    return false;
+  }
+
+  void AddCommandItem(HMENU menu, int* position, UINT* id, const Command& command, const std::wstring& label) {
+    commands_.push_back(command);
+    InsertMenuW(menu, (*position)++, MF_BYPOSITION | MF_STRING, (*id)++, label.c_str());
+  }
+
+  void AddOperationSubmenu(HMENU menu, const std::wstring& op, const std::vector<CacheEntry>& cache, UINT& id) {
+    int position = 0;
+    int quickCount = 0;
+    std::vector<std::wstring> seen;
+    for (const auto& entry : cache) {
+      if (entry.op != op) continue;
+      if (entry.dest.empty() || HasSeenDestination(seen, entry.dest)) continue;
+      if (quickCount >= 8) break;
+      Command quick;
+      quick.op = op;
+      quick.dest = entry.dest;
+      quick.pick = false;
+      AddCommandItem(menu, &position, &id, quick, entry.label.empty() ? entry.dest : entry.label);
+      seen.push_back(entry.dest);
+      ++quickCount;
+    }
+    if (quickCount == 0) {
+      InsertMenuW(menu, position++, MF_BYPOSITION | MF_STRING | MF_GRAYED, 0, L"No quick paths yet");
+    } else {
+      InsertMenuW(menu, position++, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+    }
+
+    Command pick;
+    pick.op = op;
+    pick.pick = true;
+    AddCommandItem(menu, &position, &id, pick, L"Choose target...");
+  }
+
   volatile LONG ref_ = 1;
   std::vector<std::wstring> selected_;
   std::vector<Command> commands_;

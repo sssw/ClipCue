@@ -35,11 +35,13 @@ constexpr int IDC_REGISTER_MENU = 1011;
 constexpr int IDC_UNREGISTER_MENU = 1012;
 constexpr int IDC_OPEN_INSTALLER = 1013;
 constexpr int IDC_CLOSE = 1014;
+constexpr int IDC_SUGGESTIONS = 1015;
 
 struct UiState {
   HWND hwnd = nullptr;
   HWND status = nullptr;
   HWND pins = nullptr;
+  HWND suggestions = nullptr;
   HWND history = nullptr;
   HWND opCombo = nullptr;
   HFONT font = nullptr;
@@ -94,6 +96,18 @@ std::wstring StatusText(const HistoryDatabase& db, const std::wstring& extra = L
   return ss.str();
 }
 
+void AddCandidateLines(HWND list, const HistoryDatabase& db, OperationKind op, const std::wstring& title) {
+  auto candidates = db.GetGlobalCandidates(op, 8);
+  if (candidates.empty()) return;
+  SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(title.c_str()));
+  for (const auto& c : candidates) {
+    std::wstring origin = c.pinned ? L"pinned" : L"detected";
+    std::wstring label = c.label.empty() ? FormatMenuLabel(c.destParent) : c.label;
+    std::wstring line = L"  [" + origin + L"]  " + label + L" -> " + c.destParent;
+    SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+  }
+}
+
 void Refresh(UiState* s, const std::wstring& extra = L"") {
   HistoryDatabase db;
   std::wstring err;
@@ -109,6 +123,13 @@ void Refresh(UiState* s, const std::wstring& extra = L"") {
   for (const auto& pin : s->pinsData) {
     std::wstring line = L"[" + OperationDisplay(pin.op) + L"]  " + (pin.label.empty() ? FormatMenuLabel(pin.destParent) : pin.label) + L"  →  " + pin.destParent;
     SendMessageW(s->pins, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+  }
+
+  SendMessageW(s->suggestions, LB_RESETCONTENT, 0, 0);
+  AddCandidateLines(s->suggestions, db, OperationKind::Move, L"PathCue Move to...");
+  AddCandidateLines(s->suggestions, db, OperationKind::Copy, L"PathCue Copy to...");
+  if (SendMessageW(s->suggestions, LB_GETCOUNT, 0, 0) == 0) {
+    SendMessageW(s->suggestions, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No detected quick targets yet."));
   }
 
   SendMessageW(s->history, LB_RESETCONTENT, 0, 0);
@@ -246,29 +267,32 @@ void OnCreate(UiState* s) {
   s->status = MakeControl(s, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_READONLY | WS_VSCROLL, 14, 38, 850, 96, IDC_STATUS);
 
   MakeControl(s, L"STATIC", L"Pinned quick targets", WS_CHILD | WS_VISIBLE, 14, 146, 300, 18, -1);
-  s->pins = MakeControl(s, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL, 14, 168, 850, 150, IDC_PINS);
+  s->pins = MakeControl(s, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL, 14, 168, 850, 120, IDC_PINS);
 
-  MakeControl(s, L"STATIC", L"New target operation:", WS_CHILD | WS_VISIBLE, 14, 330, 135, 22, -1);
-  s->opCombo = MakeControl(s, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 150, 326, 160, 160, IDC_OP_COMBO);
+  MakeControl(s, L"STATIC", L"Detected quick targets", WS_CHILD | WS_VISIBLE, 14, 300, 300, 18, -1);
+  s->suggestions = MakeControl(s, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL, 14, 322, 850, 150, IDC_SUGGESTIONS);
+
+  MakeControl(s, L"STATIC", L"New target operation:", WS_CHILD | WS_VISIBLE, 14, 486, 135, 22, -1);
+  s->opCombo = MakeControl(s, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 150, 482, 160, 160, IDC_OP_COMBO);
   SendMessageW(s->opCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Copy + Move"));
   SendMessageW(s->opCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Move only"));
   SendMessageW(s->opCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Copy only"));
   SendMessageW(s->opCombo, CB_SETCURSEL, 0, 0);
 
-  MakeControl(s, L"BUTTON", L"Add target...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 324, 326, 112, 28, IDC_ADD_PIN);
-  MakeControl(s, L"BUTTON", L"Remove selected", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 444, 326, 130, 28, IDC_REMOVE_PIN);
-  MakeControl(s, L"BUTTON", L"Build menu cache", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 584, 326, 130, 28, IDC_BUILD_CACHE);
-  MakeControl(s, L"BUTTON", L"Cleanup history", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 724, 326, 140, 28, IDC_CLEANUP);
+  MakeControl(s, L"BUTTON", L"Add target...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 324, 482, 112, 28, IDC_ADD_PIN);
+  MakeControl(s, L"BUTTON", L"Remove selected", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 444, 482, 130, 28, IDC_REMOVE_PIN);
+  MakeControl(s, L"BUTTON", L"Build menu cache", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 584, 482, 130, 28, IDC_BUILD_CACHE);
+  MakeControl(s, L"BUTTON", L"Cleanup history", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 724, 482, 140, 28, IDC_CLEANUP);
 
-  MakeControl(s, L"STATIC", L"Recent PathCue operations", WS_CHILD | WS_VISIBLE, 14, 372, 300, 18, -1);
-  s->history = MakeControl(s, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL, 14, 394, 850, 118, IDC_HISTORY);
+  MakeControl(s, L"STATIC", L"Recent PathCue operations", WS_CHILD | WS_VISIBLE, 14, 528, 300, 18, -1);
+  s->history = MakeControl(s, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL, 14, 550, 850, 118, IDC_HISTORY);
 
-  MakeControl(s, L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 14, 528, 94, 30, IDC_REFRESH);
-  MakeControl(s, L"BUTTON", L"Open data folder", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 118, 528, 130, 30, IDC_OPEN_DATA);
-  MakeControl(s, L"BUTTON", L"Register menu", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 258, 528, 118, 30, IDC_REGISTER_MENU);
-  MakeControl(s, L"BUTTON", L"Unregister menu", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 386, 528, 128, 30, IDC_UNREGISTER_MENU);
-  MakeControl(s, L"BUTTON", L"Open installer", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 524, 528, 122, 30, IDC_OPEN_INSTALLER);
-  MakeControl(s, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 770, 528, 94, 30, IDC_CLOSE);
+  MakeControl(s, L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 14, 688, 94, 30, IDC_REFRESH);
+  MakeControl(s, L"BUTTON", L"Open data folder", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 118, 688, 130, 30, IDC_OPEN_DATA);
+  MakeControl(s, L"BUTTON", L"Register menu", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 258, 688, 118, 30, IDC_REGISTER_MENU);
+  MakeControl(s, L"BUTTON", L"Unregister menu", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 386, 688, 128, 30, IDC_UNREGISTER_MENU);
+  MakeControl(s, L"BUTTON", L"Open installer", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 524, 688, 122, 30, IDC_OPEN_INSTALLER);
+  MakeControl(s, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 770, 688, 94, 30, IDC_CLOSE);
 
   Refresh(s);
 }
@@ -327,7 +351,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   RegisterClassExW(&wc);
 
   HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"PathCue Control Panel", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                              CW_USEDEFAULT, CW_USEDEFAULT, 900, 610, nullptr, nullptr, instance, &state);
+                              CW_USEDEFAULT, CW_USEDEFAULT, 900, 770, nullptr, nullptr, instance, &state);
   if (!hwnd) return 1;
   ShowWindow(hwnd, show);
   UpdateWindow(hwnd);
