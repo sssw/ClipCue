@@ -2,7 +2,7 @@
 
 ClipCue is a Windows Explorer enhancement that adds context-menu commands for fast file/folder copy and move operations. It learns successful ClipCue and external Explorer operations, shares target history between Move to and Copy to, prioritizes targets that match the current source path, surfaces detected target folders as quick suggestions, supports conflict policies, UAC elevation fallback, and a per-user DPAPI-encrypted history store.
 
-> Status: engineering preview. The repository is designed to compile on GitHub Actions `windows-latest` with CMake and Visual Studio. The classic Explorer context menu, encrypted append-only history store, worker, elevated helper, settings CLI, native control panel UI, per-user background monitor with tray icon, external Explorer copy/cut/paste learning, clipboard file queue, clipboard text history/editor, per-user installer, cache generation, and core file operation path are implemented. USN journal learning, SQLCipher, and Windows 11 `IExplorerCommand` are documented extension points and intentionally disabled in the default build.
+> Status: engineering preview. The repository is designed to compile on GitHub Actions `windows-latest` with CMake and Visual Studio. The classic Explorer context menu, encrypted append-only history store, worker, elevated helper, settings CLI, modernized native control center, per-user background monitor with tray icon, external Explorer copy/cut/paste learning, clipboard file queue, clipboard text history/editor, per-user installer, cache generation, and core file operation path are implemented. USN journal learning, SQLCipher, and Windows 11 `IExplorerCommand` are documented extension points and intentionally disabled in the default build.
 
 ## License
 
@@ -46,9 +46,9 @@ Unzip the artifact and run:
 .\ClipCue.Installer.exe
 ```
 
-The installer performs a per-user install by default, registers the classic Explorer context menu under `HKCU`, enables `ClipCue.Monitor.exe` at sign-in through the current-user Run key, starts the tree tray icon, creates Start Menu shortcuts, and leaves user data under `%LOCALAPPDATA%\ClipCue` intact during uninstall. See [docs/INSTALLER_UI.md](docs/INSTALLER_UI.md).
+The installer performs a per-user install by default, registers the classic Explorer context menu under `HKCU`, enables `ClipCue.Monitor.exe` at sign-in through the current-user Run key, starts the tree tray icon, creates Start Menu shortcuts, can launch either the Control Center or the Path Clip Queue after install, and leaves user data under `%LOCALAPPDATA%\ClipCue` intact during uninstall. See [docs/INSTALLER_UI.md](docs/INSTALLER_UI.md).
 
-Open the control panel with:
+Open the modern Control Center with:
 
 ```powershell
 .\ClipCue.UI.exe
@@ -95,8 +95,8 @@ powershell -ExecutionPolicy Bypass -File ..\..\scripts\unregister-classic.ps1 -B
 | `ClipCue.Elevated.exe` | UAC helper | Implemented |
 | `ClipCue.Settings.exe` | pinned and detected targets, cleanup, cache | Implemented CLI |
 | `ClipCue.Monitor.exe` | tray monitor, external clipboard/shell-change learning | Implemented |
-| `ClipCue.UI.exe` | native control panel and dedicated Path Clip Queue workspace | Implemented GUI |
-| `ClipCue.Installer.exe` | per-user installer/uninstaller | Implemented GUI + silent CLI |
+| `ClipCue.UI.exe` | modern native Control Center plus dedicated Path Clip Queue workspace | Implemented GUI |
+| `ClipCue.Installer.exe` | per-user installer/uninstaller | Implemented modern GUI + silent CLI |
 | DPAPI encrypted history store | per-user local history | Implemented |
 | Source-path prioritized target ranking | history/pinned/detected route scoring | Implemented |
 | Recycle-before-overwrite | Shell recycle fallback | Implemented |
@@ -105,7 +105,7 @@ powershell -ExecutionPolicy Bypass -File ..\..\scripts\unregister-classic.ps1 -B
 | Clipboard file queue | multiple copy/cut clipboard actions can be previewed, edited, and repeatedly applied to target folders | Implemented |
 | Dedicated Path Clip Queue UI | standalone queue workspace with active/history status, entry editing, target folder selection, and previewed apply actions | Implemented |
 | Clipboard duplicate coalescing | repeated identical clipboard actions are kept as one entry with a repeat count | Implemented |
-| Clipboard text history/editor | text clipboard history has a dedicated Text page for select, merge, edit, copy, or paste | Implemented |
+| Clipboard text history/editor | text clipboard history has a dedicated Text page for select, merge, edit, normalize, copy, or paste | Implemented |
 | USN/CopyHook learning | optional external operation enhancement | Extension point |
 | SQLCipher backend | full SQLite encryption | Extension point |
 | Windows 11 modern menu | `IExplorerCommand` | Extension point |
