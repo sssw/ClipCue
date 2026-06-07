@@ -1,10 +1,10 @@
-#include "pathcue/FileOps.h"
-#include "pathcue/Job.h"
-#include "pathcue/WinUtils.h"
+#include "clipcue/FileOps.h"
+#include "clipcue/Job.h"
+#include "clipcue/WinUtils.h"
 
 #include <iostream>
 
-using namespace pathcue;
+using namespace clipcue;
 
 int wmain() {
   auto args = SplitCommandLineArgs();
@@ -15,7 +15,7 @@ int wmain() {
     if (args[i] == L"--result") resultFile = args[i + 1];
   }
   if (jobFile.empty()) {
-    std::wcerr << L"Usage: PathCue.Worker --job <jobfile> [--result <resultfile>]\n";
+    std::wcerr << L"Usage: ClipCue.Worker --job <jobfile> [--result <resultfile>]\n";
     return 1;
   }
   JobRequest job;

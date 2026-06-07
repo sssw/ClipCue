@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace pathcue {
+namespace clipcue {
 
 // A small append-only per-user record store.  Each record is encrypted with
 // DPAPI CurrentUser by default.  This is intentionally dependency-free so the
@@ -29,4 +29,4 @@ class EncryptedRecordStore {
 bool ProtectTextCurrentUser(const std::wstring& plaintext, std::wstring* protectedBase64, std::wstring* error = nullptr);
 bool UnprotectTextCurrentUser(const std::wstring& protectedBase64, std::wstring* plaintext, std::wstring* error = nullptr);
 
-}  // namespace pathcue
+}  // namespace clipcue

@@ -1,10 +1,10 @@
-#include "pathcue/FileOps.h"
-#include "pathcue/Job.h"
-#include "pathcue/WinUtils.h"
+#include "clipcue/FileOps.h"
+#include "clipcue/Job.h"
+#include "clipcue/WinUtils.h"
 
 #include <iostream>
 
-using namespace pathcue;
+using namespace clipcue;
 
 int wmain() {
   auto args = SplitCommandLineArgs();
@@ -17,7 +17,7 @@ int wmain() {
   JobResult result;
   if (jobFile.empty()) {
     result.hr = E_INVALIDARG;
-    result.message = L"Usage: PathCue.Elevated --job <jobfile> --result <resultfile>";
+    result.message = L"Usage: ClipCue.Elevated --job <jobfile> --result <resultfile>";
   } else {
     JobRequest job;
     std::wstring err;

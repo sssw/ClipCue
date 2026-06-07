@@ -26,7 +26,7 @@ jobs:
           cmake -S . -B build/${{ matrix.arch }} `
             -A ${{ matrix.arch }} `
             -DCMAKE_BUILD_TYPE=${{ matrix.config }} `
-            -DPATHCUE_BUILD_TESTS=ON
+            -DCLIPCUE_BUILD_TESTS=ON
 
       - name: Build
         shell: pwsh
@@ -40,18 +40,18 @@ jobs:
         shell: pwsh
         run: |
           $bin = "build/${{ matrix.arch }}/${{ matrix.config }}"
-          $target = Join-Path $env:TEMP "PathCueCiInstall-${{ matrix.arch }}"
-          & "$bin/PathCue.Installer.exe" /install /silent /dir $target
-          if (!(Test-Path (Join-Path $target "PathCue.UI.exe"))) { throw "PathCue.UI.exe was not installed" }
-          & (Join-Path $target "PathCue.Installer.exe") /uninstall /silent /dir $target
+          $target = Join-Path $env:TEMP "ClipCueCiInstall-${{ matrix.arch }}"
+          & "$bin/ClipCue.Installer.exe" /install /silent /dir $target
+          if (!(Test-Path (Join-Path $target "ClipCue.UI.exe"))) { throw "ClipCue.UI.exe was not installed" }
+          & (Join-Path $target "ClipCue.Installer.exe") /uninstall /silent /dir $target
 
       - name: Stage artifacts
         shell: pwsh
         run: |
-          $stage = "dist/PathCue-${{ matrix.arch }}-${{ matrix.config }}"
+          $stage = "dist/ClipCue-${{ matrix.arch }}-${{ matrix.config }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "build/${{ matrix.arch }}/${{ matrix.config }}/PathCue.*.exe" $stage -ErrorAction SilentlyContinue
-          Copy-Item "build/${{ matrix.arch }}/${{ matrix.config }}/PathCue.*.dll" $stage -ErrorAction SilentlyContinue
+          Copy-Item "build/${{ matrix.arch }}/${{ matrix.config }}/ClipCue.*.exe" $stage -ErrorAction SilentlyContinue
+          Copy-Item "build/${{ matrix.arch }}/${{ matrix.config }}/ClipCue.*.dll" $stage -ErrorAction SilentlyContinue
           Copy-Item LICENSE,NOTICE,README.md $stage
           Copy-Item scripts $stage -Recurse
           Copy-Item docs $stage -Recurse
@@ -60,5 +60,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PathCue-${{ matrix.arch }}-${{ matrix.config }}
-          path: dist/PathCue-${{ matrix.arch }}-${{ matrix.config }}.zip
+          name: ClipCue-${{ matrix.arch }}-${{ matrix.config }}
+          path: dist/ClipCue-${{ matrix.arch }}-${{ matrix.config }}.zip

@@ -1,5 +1,5 @@
-#include "pathcue/PathUtils.h"
-#include "pathcue/WinUtils.h"
+#include "clipcue/PathUtils.h"
+#include "clipcue/WinUtils.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -7,7 +7,7 @@
 #include <sstream>
 #include <shlwapi.h>
 
-namespace pathcue {
+namespace clipcue {
 
 static std::wstring ToLower(std::wstring s) {
   std::transform(s.begin(), s.end(), s.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
@@ -118,4 +118,4 @@ std::vector<std::wstring> SplitLines(const std::wstring& text) {
   return lines;
 }
 
-}  // namespace pathcue
+}  // namespace clipcue

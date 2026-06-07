@@ -1,12 +1,12 @@
-#include "pathcue/Job.h"
-#include "pathcue/PathUtils.h"
-#include "pathcue/WinUtils.h"
+#include "clipcue/Job.h"
+#include "clipcue/PathUtils.h"
+#include "clipcue/WinUtils.h"
 
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
 
-namespace pathcue {
+namespace clipcue {
 namespace {
 
 std::wstring EscapeValue(const std::wstring& s) {
@@ -135,11 +135,11 @@ bool LoadResultFile(const std::wstring& path, JobResult* result, std::wstring* e
   return true;
 }
 
-std::wstring CreateTempPathCueFile(const std::wstring& extension) {
+std::wstring CreateTempClipCueFile(const std::wstring& extension) {
   wchar_t tempDir[MAX_PATH]{};
   GetTempPathW(MAX_PATH, tempDir);
   wchar_t tempFile[MAX_PATH]{};
-  GetTempFileNameW(tempDir, L"pcq", 0, tempFile);
+  GetTempFileNameW(tempDir, L"ccq", 0, tempFile);
   std::wstring out(tempFile);
   if (!extension.empty()) {
     std::wstring renamed = out + extension;
@@ -149,4 +149,4 @@ std::wstring CreateTempPathCueFile(const std::wstring& extension) {
   return out;
 }
 
-}  // namespace pathcue
+}  // namespace clipcue

@@ -1,8 +1,8 @@
-#include "pathcue/CryptoStore.h"
-#include "pathcue/History.h"
-#include "pathcue/PathUtils.h"
-#include "pathcue/WinUtils.h"
-#include "pathcue/Version.h"
+#include "clipcue/CryptoStore.h"
+#include "clipcue/History.h"
+#include "clipcue/PathUtils.h"
+#include "clipcue/WinUtils.h"
+#include "clipcue/Version.h"
 
 #include <windows.h>
 #include <oleidl.h>
@@ -40,13 +40,13 @@
 #define SHCNRF_NewDelivery 0x8000
 #endif
 
-using namespace pathcue;
+using namespace clipcue;
 
 namespace {
 
-constexpr wchar_t kWindowClass[] = L"PathCueMonitorWindow";
+constexpr wchar_t kWindowClass[] = L"ClipCueMonitorWindow";
 constexpr wchar_t kRunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-constexpr wchar_t kRunValue[] = L"PathCue Monitor";
+constexpr wchar_t kRunValue[] = L"ClipCue Monitor";
 constexpr UINT kTrayId = 1;
 constexpr UINT kTimerRefresh = 1;
 constexpr UINT kTimerClipboardRead = 2;
@@ -63,6 +63,7 @@ constexpr DWORD kClipboardTtlMs = 30 * 60 * 1000;
 constexpr DWORD kRecentRecordTtlMs = 20 * 1000;
 constexpr DWORD kCacheFlushDelayMs = 2500;
 constexpr int kMaxClipboardRetries = 8;
+constexpr std::size_t kMaxTextClipboardChars = 512 * 1024;
 
 constexpr int IDM_STATUS = 3001;
 constexpr int IDM_OPEN_UI = 3002;
@@ -71,6 +72,7 @@ constexpr int IDM_BUILD_CACHE = 3004;
 constexpr int IDM_CLEANUP = 3005;
 constexpr int IDM_AUTOSTART = 3006;
 constexpr int IDM_EXIT = 3007;
+constexpr int IDM_OPEN_QUEUE = 3008;
 
 enum class ClipboardListenMode { None, FormatListener, ViewerChain };
 
@@ -115,7 +117,11 @@ struct MonitorState {
   std::vector<RecentRecord> recentRecords;
   bool cacheDirty = false;
   int externalRecordsThisSession = 0;
+  int clipboardRecordsThisSession = 0;
+  DWORD lastFileClipboardSequence = 0;
+  DWORD lastTextClipboardSequence = 0;
   std::wstring lastExternalRecord;
+  std::wstring lastClipboardRecord;
 };
 
 using AddClipboardFormatListenerFn = BOOL(WINAPI*)(HWND);
@@ -127,12 +133,12 @@ std::wstring ModuleDir() {
   return pos == std::wstring::npos ? L"." : exe.substr(0, pos);
 }
 
-std::wstring UiPath() { return PathCombineSimple(ModuleDir(), L"PathCue.UI.exe"); }
+std::wstring UiPath() { return PathCombineSimple(ModuleDir(), L"ClipCue.UI.exe"); }
 
 std::wstring ReadInstallDirFromRegistry() {
   wchar_t value[32768]{};
   DWORD cb = sizeof(value);
-  if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\PathCue", L"InstallDir", RRF_RT_REG_SZ, nullptr, value, &cb) == ERROR_SUCCESS) {
+  if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\ClipCue", L"InstallDir", RRF_RT_REG_SZ, nullptr, value, &cb) == ERROR_SUCCESS) {
     return value;
   }
   return ModuleDir();
@@ -140,7 +146,7 @@ std::wstring ReadInstallDirFromRegistry() {
 
 bool IsClassicMenuRegistered() {
   HKEY h{};
-  LONG rc = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\*\\shellex\\ContextMenuHandlers\\PathCue", 0, KEY_READ, &h);
+  LONG rc = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\*\\shellex\\ContextMenuHandlers\\ClipCue", 0, KEY_READ, &h);
   if (rc == ERROR_SUCCESS) RegCloseKey(h);
   return rc == ERROR_SUCCESS;
 }
@@ -151,7 +157,7 @@ bool IsAutoStartEnabled() {
   if (RegGetValueW(HKEY_CURRENT_USER, kRunKey, kRunValue, RRF_RT_REG_SZ, nullptr, value, &cb) != ERROR_SUCCESS) return false;
   std::wstring text = value;
   std::transform(text.begin(), text.end(), text.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
-  return text.find(L"pathcue.monitor.exe") != std::wstring::npos;
+  return text.find(L"clipcue.monitor.exe") != std::wstring::npos;
 }
 
 bool SetAutoStart(bool enable, std::wstring* error = nullptr) {
@@ -293,6 +299,21 @@ DWORD ReadPreferredDropEffectFromOpenClipboard(bool* found) {
   return effect;
 }
 
+std::wstring ReadUnicodeTextFromOpenClipboard() {
+  if (!IsClipboardFormatAvailable(CF_UNICODETEXT)) return L"";
+  HGLOBAL memory = static_cast<HGLOBAL>(GetClipboardData(CF_UNICODETEXT));
+  if (!memory) return L"";
+  const wchar_t* raw = static_cast<const wchar_t*>(GlobalLock(memory));
+  if (!raw) return L"";
+  SIZE_T bytes = GlobalSize(memory);
+  std::size_t maxChars = bytes >= sizeof(wchar_t) ? static_cast<std::size_t>(bytes / sizeof(wchar_t)) : 0;
+  std::size_t len = 0;
+  while (len < maxChars && raw[len] != L'\0' && len < kMaxTextClipboardChars) ++len;
+  std::wstring text(raw, raw + len);
+  GlobalUnlock(memory);
+  return text;
+}
+
 void ClearFileClipboard(MonitorState* s) {
   s->clipboard.active = false;
   s->clipboard.op = OperationKind::Unknown;
@@ -307,6 +328,70 @@ void ScheduleClipboardRead(MonitorState* s, DWORD delayMs = kClipboardReadDelayM
   SetTimer(s->hwnd, kTimerClipboardRead, delayMs, nullptr);
 }
 
+void MarkCacheDirty(MonitorState* s);
+
+bool RecordFileClipboardHistory(MonitorState* s, DWORD sequence, OperationKind op, const std::vector<ClipboardSource>& sources) {
+  if (!s || sources.empty() || sequence == s->lastFileClipboardSequence) return false;
+  if (op != OperationKind::Copy && op != OperationKind::Move) return false;
+
+  HistoryDatabase db;
+  std::wstring err;
+  db.Load(&err);
+  if (db.HasClipboardEntry(sequence, ClipboardContentKind::Files)) {
+    s->lastFileClipboardSequence = sequence;
+    return false;
+  }
+
+  ClipboardHistoryEntry entry;
+  entry.timestamp = UnixNow();
+  entry.sequence = sequence;
+  entry.kind = ClipboardContentKind::Files;
+  entry.op = op;
+  entry.selected = true;
+  entry.sourceApp = L"clipboard";
+  entry.files.reserve(sources.size());
+  for (const auto& source : sources) entry.files.push_back(source.path);
+  if (!db.AppendClipboardEntry(entry, &err)) return false;
+
+  s->lastFileClipboardSequence = sequence;
+  ++s->clipboardRecordsThisSession;
+  std::wstringstream ss;
+  ss << OperationLabel(op) << L" queue: " << sources.size() << L" file(s)";
+  s->lastClipboardRecord = ss.str();
+  MarkCacheDirty(s);
+  return true;
+}
+
+bool RecordTextClipboardHistory(MonitorState* s, DWORD sequence, const std::wstring& text) {
+  if (!s || text.empty() || sequence == s->lastTextClipboardSequence) return false;
+
+  HistoryDatabase db;
+  std::wstring err;
+  db.Load(&err);
+  if (db.HasClipboardEntry(sequence, ClipboardContentKind::Text)) {
+    s->lastTextClipboardSequence = sequence;
+    return false;
+  }
+
+  ClipboardHistoryEntry entry;
+  entry.timestamp = UnixNow();
+  entry.sequence = sequence;
+  entry.kind = ClipboardContentKind::Text;
+  entry.op = OperationKind::Copy;
+  entry.selected = false;
+  entry.sourceApp = L"clipboard";
+  entry.text = text;
+  if (!db.AppendClipboardEntry(entry, &err)) return false;
+
+  s->lastTextClipboardSequence = sequence;
+  ++s->clipboardRecordsThisSession;
+  std::wstringstream ss;
+  ss << L"text history: " << text.size() << L" character(s)";
+  s->lastClipboardRecord = ss.str();
+  MarkCacheDirty(s);
+  return true;
+}
+
 void ReadFileClipboard(MonitorState* s) {
   if (!s) return;
   KillTimer(s->hwnd, kTimerClipboardRead);
@@ -317,52 +402,51 @@ void ReadFileClipboard(MonitorState* s) {
 
   s->clipboard.retryCount = 0;
   DWORD sequence = ReadClipboardSequence();
-  if (!IsClipboardFormatAvailable(CF_HDROP)) {
-    CloseClipboard();
-    ClearFileClipboard(s);
-    return;
-  }
 
-  HDROP drop = static_cast<HDROP>(GetClipboardData(CF_HDROP));
-  if (!drop) {
-    CloseClipboard();
-    ClearFileClipboard(s);
-    return;
-  }
+  bool hasFileDrop = IsClipboardFormatAvailable(CF_HDROP);
 
   std::vector<ClipboardSource> sources;
-  UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-  sources.reserve(count);
-  for (UINT i = 0; i < count; ++i) {
-    UINT len = DragQueryFileW(drop, i, nullptr, 0);
-    if (!len) continue;
-    std::wstring path(len + 1, L'\0');
-    DragQueryFileW(drop, i, path.data(), len + 1);
-    while (!path.empty() && path.back() == L'\0') path.pop_back();
-    if (path.empty()) continue;
+  if (hasFileDrop) {
+    HDROP drop = static_cast<HDROP>(GetClipboardData(CF_HDROP));
+    if (drop) {
+      UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+      sources.reserve(count);
+      for (UINT i = 0; i < count; ++i) {
+        UINT len = DragQueryFileW(drop, i, nullptr, 0);
+        if (!len) continue;
+        std::wstring path(len + 1, L'\0');
+        DragQueryFileW(drop, i, path.data(), len + 1);
+        while (!path.empty() && path.back() == L'\0') path.pop_back();
+        if (path.empty()) continue;
 
-    ClipboardSource source;
-    source.path = NormalizePathForDisplay(path);
-    source.parent = ParentPath(source.path);
-    source.name = FileNameFromPath(source.path);
-    sources.push_back(std::move(source));
+        ClipboardSource source;
+        source.path = NormalizePathForDisplay(path);
+        source.parent = ParentPath(source.path);
+        source.name = FileNameFromPath(source.path);
+        sources.push_back(std::move(source));
+      }
+    }
   }
 
   bool hasEffect = false;
   DWORD effect = ReadPreferredDropEffectFromOpenClipboard(&hasEffect);
+  std::wstring clipboardText = ReadUnicodeTextFromOpenClipboard();
   CloseClipboard();
 
   if (sources.empty()) {
     ClearFileClipboard(s);
-    return;
+  } else {
+    OperationKind op = OperationFromPreferredDropEffect(effect, hasEffect);
+    s->clipboard.active = true;
+    s->clipboard.op = op;
+    s->clipboard.sources = sources;
+    s->clipboard.sequence = sequence;
+    s->clipboard.capturedTick = GetTickCount();
+    s->clipboard.capturedTime = CurrentFileTime();
+    RecordFileClipboardHistory(s, sequence, op, sources);
   }
 
-  s->clipboard.active = true;
-  s->clipboard.op = OperationFromPreferredDropEffect(effect, hasEffect);
-  s->clipboard.sources = std::move(sources);
-  s->clipboard.sequence = sequence;
-  s->clipboard.capturedTick = GetTickCount();
-  s->clipboard.capturedTime = CurrentFileTime();
+  if (!clipboardText.empty()) RecordTextClipboardHistory(s, sequence, clipboardText);
 }
 
 bool ClipboardSnapshotIsFresh(const MonitorState* s) {
@@ -467,6 +551,7 @@ bool AppendExternalOperation(MonitorState* s,
   record.observedBy = observedBy;
   record.conflictPolicy = L"external";
   if (!db.AppendOperation(record, &err)) return false;
+  db.MarkSelectedFileClipboardEntriesStale(&err);
 
   RecentRecord recent;
   recent.op = op;
@@ -713,13 +798,18 @@ void OpenControlPanel() {
   ShellExecuteW(nullptr, L"open", ui.c_str(), nullptr, ModuleDir().c_str(), SW_SHOWNORMAL);
 }
 
+void OpenPathQueue() {
+  std::wstring ui = UiPath();
+  ShellExecuteW(nullptr, L"open", ui.c_str(), L"queue", ModuleDir().c_str(), SW_SHOWNORMAL);
+}
+
 std::wstring StatusText(const MonitorState* s) {
   HistoryDatabase db;
   std::wstring err;
   bool loaded = db.Load(&err);
 
   std::wstringstream ss;
-  ss << L"PathCue Monitor " << PATHCUE_VERSION << L"\r\n";
+  ss << L"ClipCue Monitor " << CLIPCUE_VERSION << L"\r\n";
   ss << L"Status: Running\r\n";
   ss << L"Install folder: " << ReadInstallDirFromRegistry() << L"\r\n";
   ss << L"Auto-start: " << YesNo(IsAutoStartEnabled()) << L"\r\n";
@@ -731,12 +821,34 @@ std::wstring StatusText(const MonitorState* s) {
   ss << L"Observed file clipboard: " << ClipboardStatusText(s) << L"\r\n";
   ss << L"External records this session: " << (s ? s->externalRecordsThisSession : 0) << L"\r\n";
   if (s && !s->lastExternalRecord.empty()) ss << L"Last external record: " << s->lastExternalRecord << L"\r\n";
+  ss << L"Clipboard records this session: " << (s ? s->clipboardRecordsThisSession : 0) << L"\r\n";
+  if (s && !s->lastClipboardRecord.empty()) ss << L"Last clipboard record: " << s->lastClipboardRecord << L"\r\n";
   ss << L"Store: " << EncryptedRecordStore::DefaultStorePath() << L"\r\n";
   ss << L"Menu cache: " << EncryptedRecordStore::DefaultMenuCachePath() << L"\r\n";
   ss << L"Menu cache exists: " << YesNo(FileExists(EncryptedRecordStore::DefaultMenuCachePath())) << L"\r\n";
   if (loaded) {
+    int selectedFileEntries = 0;
+    int selectedFiles = 0;
+    int staleFileEntries = 0;
+    int textEntries = 0;
+    for (const auto& entry : db.clipboardEntries()) {
+      if (entry.kind == ClipboardContentKind::Files) {
+        if (entry.selected && !entry.stale) {
+          ++selectedFileEntries;
+          selectedFiles += static_cast<int>(entry.files.size());
+        } else if (entry.stale) {
+          ++staleFileEntries;
+        }
+      } else if (entry.kind == ClipboardContentKind::Text) {
+        ++textEntries;
+      }
+    }
     ss << L"Pinned targets: " << db.pinnedTargets().size() << L"\r\n";
-    ss << L"Operation records: " << db.operations().size();
+    ss << L"Operation records: " << db.operations().size() << L"\r\n";
+    ss << L"Active file queue: " << selectedFileEntries << L" entr" << (selectedFileEntries == 1 ? L"y" : L"ies")
+       << L", " << selectedFiles << L" file(s)\r\n";
+    ss << L"File queue history: " << staleFileEntries << L" entr" << (staleFileEntries == 1 ? L"y" : L"ies") << L"\r\n";
+    ss << L"Text clipboard history: " << textEntries << L" entr" << (textEntries == 1 ? L"y" : L"ies");
   } else {
     ss << L"History store: " << (err.empty() ? L"Unable to load" : err);
   }
@@ -748,28 +860,37 @@ std::wstring TrayTip(const MonitorState* s) {
   std::wstring err;
   db.Load(&err);
   std::wstringstream ss;
-  ss << L"PathCue monitor running";
+  ss << L"ClipCue monitor running";
   if (s && s->clipboard.active) {
     ss << L"\nClipboard: " << OperationLabel(s->clipboard.op) << L", " << s->clipboard.sources.size() << L" source(s)";
   }
   if (err.empty()) {
+    int selectedFiles = 0;
+    int staleFileEntries = 0;
+    int textEntries = 0;
+    for (const auto& entry : db.clipboardEntries()) {
+      if (entry.kind == ClipboardContentKind::Files && entry.selected && !entry.stale) selectedFiles += static_cast<int>(entry.files.size());
+      else if (entry.kind == ClipboardContentKind::Files && entry.stale) ++staleFileEntries;
+      else if (entry.kind == ClipboardContentKind::Text) ++textEntries;
+    }
     ss << L"\nPins: " << db.pinnedTargets().size() << L"  Records: " << db.operations().size();
+    ss << L"\nQueue: " << selectedFiles << L" file(s)  History: " << staleFileEntries << L"  Text: " << textEntries;
   }
   return ss.str();
 }
 
 void ShowStatus(HWND owner, const MonitorState* s) {
-  MessageBoxW(owner, StatusText(s).c_str(), L"PathCue Status", MB_OK | MB_ICONINFORMATION);
+  MessageBoxW(owner, StatusText(s).c_str(), L"ClipCue Status", MB_OK | MB_ICONINFORMATION);
 }
 
 bool RebuildMenuCache(HWND owner) {
   HistoryDatabase db;
   std::wstring err;
   if (!db.Load(&err) || !db.WriteMenuCache(L"", &err)) {
-    MessageBoxW(owner, err.empty() ? L"Unable to rebuild the PathCue menu cache." : err.c_str(), L"PathCue", MB_OK | MB_ICONERROR);
+    MessageBoxW(owner, err.empty() ? L"Unable to rebuild the ClipCue menu cache." : err.c_str(), L"ClipCue", MB_OK | MB_ICONERROR);
     return false;
   }
-  MessageBoxW(owner, L"PathCue menu cache rebuilt.", L"PathCue", MB_OK | MB_ICONINFORMATION);
+  MessageBoxW(owner, L"ClipCue menu cache rebuilt.", L"ClipCue", MB_OK | MB_ICONINFORMATION);
   return true;
 }
 
@@ -777,12 +898,12 @@ bool CleanupHistory(HWND owner) {
   HistoryDatabase db;
   std::wstring err;
   if (!db.Load(&err) || !db.CleanupExpired(90, 365, &err)) {
-    MessageBoxW(owner, err.empty() ? L"Unable to clean PathCue history." : err.c_str(), L"PathCue", MB_OK | MB_ICONERROR);
+    MessageBoxW(owner, err.empty() ? L"Unable to clean ClipCue history." : err.c_str(), L"ClipCue", MB_OK | MB_ICONERROR);
     return false;
   }
   db.Load(nullptr);
   db.WriteMenuCache(L"", nullptr);
-  MessageBoxW(owner, L"Expired PathCue operation records cleaned.", L"PathCue", MB_OK | MB_ICONINFORMATION);
+  MessageBoxW(owner, L"Expired ClipCue operation records cleaned.", L"ClipCue", MB_OK | MB_ICONINFORMATION);
   return true;
 }
 
@@ -898,9 +1019,10 @@ void RemoveTrayIcon(MonitorState* s) {
 
 void ShowTrayMenu(MonitorState* s) {
   HMENU menu = CreatePopupMenu();
-  AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, L"PathCue Monitor: Running");
+  AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, L"ClipCue Monitor: Running");
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(menu, MF_STRING, IDM_STATUS, L"Status...");
+  AppendMenuW(menu, MF_STRING, IDM_OPEN_QUEUE, L"Open Path Clip Queue");
   AppendMenuW(menu, MF_STRING, IDM_OPEN_UI, L"Open Control Panel");
   AppendMenuW(menu, MF_STRING, IDM_OPEN_DATA, L"Open Data Folder");
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -992,9 +1114,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       std::wstring err;
       switch (LOWORD(wp)) {
         case IDM_STATUS: ShowStatus(hwnd, s); return 0;
+        case IDM_OPEN_QUEUE: OpenPathQueue(); return 0;
         case IDM_OPEN_UI: OpenControlPanel(); return 0;
         case IDM_OPEN_DATA: {
-          std::wstring dir = PathCombineSimple(GetKnownFolderLocalAppData(), L"PathCue");
+          std::wstring dir = PathCombineSimple(GetKnownFolderLocalAppData(), L"ClipCue");
           EnsureDirectory(dir);
           LaunchPath(dir);
           return 0;
@@ -1002,7 +1125,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case IDM_BUILD_CACHE: RebuildMenuCache(hwnd); UpdateTrayIcon(s); return 0;
         case IDM_CLEANUP: CleanupHistory(hwnd); UpdateTrayIcon(s); return 0;
         case IDM_AUTOSTART:
-          if (!SetAutoStart(!IsAutoStartEnabled(), &err)) MessageBoxW(hwnd, err.c_str(), L"PathCue", MB_OK | MB_ICONERROR);
+          if (!SetAutoStart(!IsAutoStartEnabled(), &err)) MessageBoxW(hwnd, err.c_str(), L"ClipCue", MB_OK | MB_ICONERROR);
           UpdateTrayIcon(s);
           return 0;
         case IDM_EXIT: DestroyWindow(hwnd); return 0;
@@ -1055,7 +1178,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     return 0;
   }
 
-  Handle mutex(CreateMutexW(nullptr, TRUE, L"Local\\PathCue.Monitor.Singleton"));
+  Handle mutex(CreateMutexW(nullptr, TRUE, L"Local\\ClipCue.Monitor.Singleton"));
   if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
 
   MonitorState state;
@@ -1071,7 +1194,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   wc.hIcon = state.icon;
   RegisterClassExW(&wc);
 
-  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"PathCue Monitor", WS_OVERLAPPEDWINDOW,
+  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"ClipCue Monitor", WS_OVERLAPPEDWINDOW,
                               CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, nullptr, nullptr, instance, &state);
   if (!hwnd) return 1;
   if (!HasArg(args, L"--background") && show != SW_HIDE) ShowStatus(hwnd, &state);

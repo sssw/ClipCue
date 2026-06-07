@@ -3,14 +3,14 @@ param(
   [string]$BuildDir = "build\Release",
 
   [Parameter(Mandatory=$false)]
-  [string]$Output = "dist\PathCue-local.zip"
+  [string]$Output = "dist\ClipCue-local.zip"
 )
 
 $ErrorActionPreference = "Stop"
-$stage = Join-Path ([System.IO.Path]::GetTempPath()) ("PathCueStage-" + [guid]::NewGuid())
+$stage = Join-Path ([System.IO.Path]::GetTempPath()) ("ClipCueStage-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
-Copy-Item (Join-Path $BuildDir "PathCue.*.exe") $stage -ErrorAction SilentlyContinue
-Copy-Item (Join-Path $BuildDir "PathCue.*.dll") $stage -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $BuildDir "ClipCue.*.exe") $stage -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $BuildDir "ClipCue.*.dll") $stage -ErrorAction SilentlyContinue
 Copy-Item LICENSE,NOTICE,README.md $stage
 Copy-Item scripts $stage -Recurse
 Copy-Item docs $stage -Recurse

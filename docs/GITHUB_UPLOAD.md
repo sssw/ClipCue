@@ -3,7 +3,7 @@
 ```powershell
 git init
 git add .
-git commit -m "Initial PathCue engineering preview"
+git commit -m "Initial ClipCue engineering preview"
 git branch -M main
 git remote add origin https://github.com/<OWNER>/<REPO>.git
 git push -u origin main

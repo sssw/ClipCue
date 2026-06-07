@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$dll = Join-Path $BuildDir "PathCue.ShellClassic.dll"
+$dll = Join-Path $BuildDir "ClipCue.ShellClassic.dll"
 if (Test-Path $dll) {
   $full = (Resolve-Path $dll).Path
   & regsvr32.exe /s /u $full
@@ -12,5 +12,5 @@ if (Test-Path $dll) {
     Write-Warning "regsvr32 unregister returned $LASTEXITCODE; continuing registry cleanup."
   }
 }
-Remove-Item -Path "HKCU:\Software\PathCue" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "Unregistered PathCue classic shell extension for current user."
+Remove-Item -Path "HKCU:\Software\ClipCue" -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "Unregistered ClipCue classic shell extension for current user."

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace pathcue {
+namespace clipcue {
 
 std::wstring Utf8ToWide(const std::string& input);
 std::string WideToUtf8(const std::wstring& input);
@@ -52,4 +52,4 @@ class Handle {
   HANDLE h_ = nullptr;
 };
 
-}  // namespace pathcue
+}  // namespace clipcue

@@ -1,6 +1,6 @@
-#include "pathcue/FileOps.h"
-#include "pathcue/PathUtils.h"
-#include "pathcue/WinUtils.h"
+#include "clipcue/FileOps.h"
+#include "clipcue/PathUtils.h"
+#include "clipcue/WinUtils.h"
 
 #include <shobjidl.h>
 #include <shellapi.h>
@@ -11,7 +11,7 @@
 #define FOFX_SHOWELEVATIONPROMPT 0x00040000
 #endif
 
-namespace pathcue {
+namespace clipcue {
 namespace {
 
 class FileOperationSink : public IFileOperationProgressSink {
@@ -214,4 +214,4 @@ JobResult ExecuteFileOperationJob(const JobRequest& job, HWND owner) {
   return result;
 }
 
-}  // namespace pathcue
+}  // namespace clipcue

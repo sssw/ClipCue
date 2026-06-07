@@ -1,11 +1,11 @@
-#include "pathcue/WinUtils.h"
+#include "clipcue/WinUtils.h"
 
 #include <knownfolders.h>
 #include <shlobj.h>
 #include <shellapi.h>
 #include <sstream>
 
-namespace pathcue {
+namespace clipcue {
 
 std::wstring Utf8ToWide(const std::string& input) {
   if (input.empty()) return L"";
@@ -149,4 +149,4 @@ void Handle::reset(HANDLE h) {
   h_ = h;
 }
 
-}  // namespace pathcue
+}  // namespace clipcue

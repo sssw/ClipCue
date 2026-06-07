@@ -1,14 +1,14 @@
-#include "pathcue/CryptoStore.h"
-#include "pathcue/WinUtils.h"
+#include "clipcue/CryptoStore.h"
+#include "clipcue/WinUtils.h"
 
 #include <wincrypt.h>
 #include <fstream>
 #include <sstream>
 
-namespace pathcue {
+namespace clipcue {
 namespace {
 
-const wchar_t kEntropyText[] = L"PathCue.DPAPI.RecordStore.v1";
+const wchar_t kEntropyText[] = L"ClipCue.DPAPI.RecordStore.v1";
 
 DATA_BLOB MakeBlob(const std::vector<BYTE>& data) {
   DATA_BLOB blob{};
@@ -41,7 +41,7 @@ bool Base64ToBytes(const std::wstring& base64, std::vector<BYTE>* out) {
 }
 
 std::wstring StoreDirectory() {
-  return PathCombineSimple(GetKnownFolderLocalAppData(), L"PathCue\\Data");
+  return PathCombineSimple(GetKnownFolderLocalAppData(), L"ClipCue\\Data");
 }
 
 }  // namespace
@@ -49,11 +49,11 @@ std::wstring StoreDirectory() {
 EncryptedRecordStore::EncryptedRecordStore(std::wstring path) : path_(std::move(path)) {}
 
 std::wstring EncryptedRecordStore::DefaultStorePath() {
-  return PathCombineSimple(StoreDirectory(), L"pathcue.db");
+  return PathCombineSimple(StoreDirectory(), L"clipcue.db");
 }
 
 std::wstring EncryptedRecordStore::DefaultCacheDirectory() {
-  return PathCombineSimple(GetKnownFolderLocalAppData(), L"PathCue\\Cache");
+  return PathCombineSimple(GetKnownFolderLocalAppData(), L"ClipCue\\Cache");
 }
 
 std::wstring EncryptedRecordStore::DefaultMenuCachePath() {
@@ -66,7 +66,7 @@ bool ProtectTextCurrentUser(const std::wstring& plaintext, std::wstring* protect
   DATA_BLOB in = MakeBlob(bytes);
   DATA_BLOB entropy = MakeBlobFromWide(kEntropyText);
   DATA_BLOB out{};
-  if (!CryptProtectData(&in, L"PathCue record", &entropy, nullptr, nullptr, 0, &out)) {
+  if (!CryptProtectData(&in, L"ClipCue record", &entropy, nullptr, nullptr, 0, &out)) {
     if (error) *error = GetLastErrorMessage();
     return false;
   }
@@ -157,4 +157,4 @@ bool EncryptedRecordStore::RewriteRecords(const std::vector<std::wstring>& recor
   return true;
 }
 
-}  // namespace pathcue
+}  // namespace clipcue

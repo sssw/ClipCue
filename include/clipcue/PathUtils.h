@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace pathcue {
+namespace clipcue {
 
 std::wstring NormalizePathForDisplay(const std::wstring& path);
 std::wstring ParentPath(const std::wstring& path);
@@ -19,4 +19,4 @@ bool IsSamePathCaseInsensitive(const std::wstring& a, const std::wstring& b);
 std::wstring JoinLines(const std::vector<std::wstring>& lines);
 std::vector<std::wstring> SplitLines(const std::wstring& text);
 
-}  // namespace pathcue
+}  // namespace clipcue

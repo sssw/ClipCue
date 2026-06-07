@@ -1,6 +1,6 @@
-#include "pathcue/PathUtils.h"
-#include "pathcue/WinUtils.h"
-#include "pathcue/Version.h"
+#include "clipcue/PathUtils.h"
+#include "clipcue/WinUtils.h"
+#include "clipcue/Version.h"
 
 #include <windows.h>
 #include <commctrl.h>
@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-using namespace pathcue;
+using namespace clipcue;
 
 namespace {
 
@@ -32,8 +32,8 @@ constexpr int IDC_OPEN_FOLDER = 2010;
 constexpr int IDC_START_MONITOR = 2011;
 
 constexpr wchar_t kMonitorRunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-constexpr wchar_t kMonitorRunValue[] = L"PathCue Monitor";
-constexpr wchar_t kMonitorWindowClass[] = L"PathCueMonitorWindow";
+constexpr wchar_t kMonitorRunValue[] = L"ClipCue Monitor";
+constexpr wchar_t kMonitorWindowClass[] = L"ClipCueMonitorWindow";
 constexpr UINT kMonitorQuitMessage = WM_APP + 3;
 
 struct InstallerState {
@@ -54,13 +54,13 @@ std::wstring ModuleDir() {
 }
 
 std::wstring DefaultInstallDir() {
-  return PathCombineSimple(GetKnownFolderLocalAppData(), L"Programs\\PathCue");
+  return PathCombineSimple(GetKnownFolderLocalAppData(), L"Programs\\ClipCue");
 }
 
 std::wstring ReadInstallDirFromRegistry() {
   wchar_t value[32768]{};
   DWORD cb = sizeof(value);
-  if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\PathCue", L"InstallDir", RRF_RT_REG_SZ, nullptr, value, &cb) == ERROR_SUCCESS) {
+  if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\ClipCue", L"InstallDir", RRF_RT_REG_SZ, nullptr, value, &cb) == ERROR_SUCCESS) {
     return value;
   }
   return DefaultInstallDir();
@@ -82,7 +82,7 @@ void AppendLog(HWND edit, const std::wstring& line) {
     wchar_t temp[MAX_PATH]{};
     DWORD len = GetTempPathW(static_cast<DWORD>(_countof(temp)), temp);
     if (len > 0 && len < _countof(temp)) {
-      std::wstring path = PathCombineSimple(temp, L"PathCue.Installer.log");
+      std::wstring path = PathCombineSimple(temp, L"ClipCue.Installer.log");
       Handle file(CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
       if (file) {
         std::string utf8 = WideToUtf8(line + L"\r\n");
@@ -169,7 +169,7 @@ void CopyDirectoryRecursive(const std::wstring& source, const std::wstring& targ
 }
 
 HRESULT CallShellRegistration(const std::wstring& installDir, bool reg) {
-  std::wstring dll = PathCombineSimple(installDir, L"PathCue.ShellClassic.dll");
+  std::wstring dll = PathCombineSimple(installDir, L"ClipCue.ShellClassic.dll");
   HMODULE h = LoadLibraryW(dll.c_str());
   if (!h) return HRESULT_FROM_WIN32(GetLastError());
   using Fn = HRESULT(__stdcall*)();
@@ -188,7 +188,7 @@ std::wstring StartMenuPath() {
   } else {
     base = PathCombineSimple(GetKnownFolderLocalAppData(), L"Microsoft\\Windows\\Start Menu");
   }
-  return PathCombineSimple(base, L"Programs\\PathCue");
+  return PathCombineSimple(base, L"Programs\\ClipCue");
 }
 
 bool CreateShortcut(const std::wstring& linkPath, const std::wstring& target, const std::wstring& args, const std::wstring& description) {
@@ -214,10 +214,11 @@ bool CreateShortcut(const std::wstring& linkPath, const std::wstring& target, co
 void CreateShortcuts(const std::wstring& installDir, HWND log) {
   std::wstring menu = StartMenuPath();
   EnsureDirectory(menu);
-  CreateShortcut(PathCombineSimple(menu, L"PathCue Control Panel.lnk"), PathCombineSimple(installDir, L"PathCue.UI.exe"), L"", L"Configure PathCue");
-  CreateShortcut(PathCombineSimple(menu, L"PathCue Monitor.lnk"), PathCombineSimple(installDir, L"PathCue.Monitor.exe"), L"", L"Show PathCue monitor status");
-  CreateShortcut(PathCombineSimple(menu, L"PathCue Installer.lnk"), PathCombineSimple(installDir, L"PathCue.Installer.exe"), L"", L"Install or repair PathCue");
-  CreateShortcut(PathCombineSimple(menu, L"Uninstall PathCue.lnk"), PathCombineSimple(installDir, L"PathCue.Installer.exe"), L"/uninstall", L"Uninstall PathCue");
+  CreateShortcut(PathCombineSimple(menu, L"ClipCue Control Panel.lnk"), PathCombineSimple(installDir, L"ClipCue.UI.exe"), L"", L"Configure ClipCue");
+  CreateShortcut(PathCombineSimple(menu, L"ClipCue Path Clip Queue.lnk"), PathCombineSimple(installDir, L"ClipCue.UI.exe"), L"queue", L"Open ClipCue path clipboard queue");
+  CreateShortcut(PathCombineSimple(menu, L"ClipCue Monitor.lnk"), PathCombineSimple(installDir, L"ClipCue.Monitor.exe"), L"", L"Show ClipCue monitor status");
+  CreateShortcut(PathCombineSimple(menu, L"ClipCue Installer.lnk"), PathCombineSimple(installDir, L"ClipCue.Installer.exe"), L"", L"Install or repair ClipCue");
+  CreateShortcut(PathCombineSimple(menu, L"Uninstall ClipCue.lnk"), PathCombineSimple(installDir, L"ClipCue.Installer.exe"), L"/uninstall", L"Uninstall ClipCue");
   AppendLog(log, L"Start menu shortcuts created.");
 }
 
@@ -239,11 +240,11 @@ void DeleteDirectoryRecursive(const std::wstring& dir, HWND log) {
 }
 
 void WriteUninstallInfo(const std::wstring& installDir) {
-  std::wstring key = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PathCue";
-  std::wstring installer = PathCombineSimple(installDir, L"PathCue.Installer.exe");
-  SetRegString(HKEY_CURRENT_USER, key, L"DisplayName", L"PathCue");
-  SetRegString(HKEY_CURRENT_USER, key, L"DisplayVersion", PATHCUE_VERSION);
-  SetRegString(HKEY_CURRENT_USER, key, L"Publisher", L"PathCue contributors");
+  std::wstring key = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ClipCue";
+  std::wstring installer = PathCombineSimple(installDir, L"ClipCue.Installer.exe");
+  SetRegString(HKEY_CURRENT_USER, key, L"DisplayName", L"ClipCue");
+  SetRegString(HKEY_CURRENT_USER, key, L"DisplayVersion", CLIPCUE_VERSION);
+  SetRegString(HKEY_CURRENT_USER, key, L"Publisher", L"ClipCue contributors");
   SetRegString(HKEY_CURRENT_USER, key, L"InstallLocation", installDir);
   SetRegString(HKEY_CURRENT_USER, key, L"DisplayIcon", installer);
   SetRegString(HKEY_CURRENT_USER, key, L"UninstallString", QuoteArg(installer) + L" /uninstall");
@@ -258,7 +259,7 @@ std::wstring ToLowerCopy(std::wstring text) {
 }
 
 std::wstring MonitorPath(const std::wstring& installDir) {
-  return PathCombineSimple(installDir, L"PathCue.Monitor.exe");
+  return PathCombineSimple(installDir, L"ClipCue.Monitor.exe");
 }
 
 void DeleteRegValue(HKEY root, const std::wstring& key, const std::wstring& name) {
@@ -299,7 +300,7 @@ bool EnableMonitorAutoStart(const std::wstring& installDir, HWND log) {
     return false;
   }
 
-  SetRegDWORD(HKEY_CURRENT_USER, L"Software\\PathCue", L"MonitorEnabled", 1);
+  SetRegDWORD(HKEY_CURRENT_USER, L"Software\\ClipCue", L"MonitorEnabled", 1);
   AppendLog(log, L"Background monitor auto-start enabled.");
   return true;
 }
@@ -343,7 +344,7 @@ bool ConfigureMonitor(const std::wstring& installDir, bool enabled, HWND log) {
   if (!enabled) {
     StopMonitor(log);
     DisableMonitorAutoStart(log);
-    SetRegDWORD(HKEY_CURRENT_USER, L"Software\\PathCue", L"MonitorEnabled", 0);
+    SetRegDWORD(HKEY_CURRENT_USER, L"Software\\ClipCue", L"MonitorEnabled", 0);
     return true;
   }
   if (!EnableMonitorAutoStart(installDir, log)) return false;
@@ -355,12 +356,12 @@ bool ConfigureMonitor(const std::wstring& installDir, bool enabled, HWND log) {
 }
 
 bool InstallTo(const std::wstring& sourceDir, const std::wstring& installDir, bool registerShell, bool shortcuts, bool startMonitor, HWND log) {
-  AppendLog(log, L"Installing PathCue to: " + installDir);
+  AppendLog(log, L"Installing ClipCue to: " + installDir);
   StopMonitor(log);
   EnsureDirectory(installDir);
   bool copied = true;
-  copied = CopyPattern(sourceDir, installDir, L"PathCue.*.exe", log) && copied;
-  copied = CopyPattern(sourceDir, installDir, L"PathCue.*.dll", log) && copied;
+  copied = CopyPattern(sourceDir, installDir, L"ClipCue.*.exe", log) && copied;
+  copied = CopyPattern(sourceDir, installDir, L"ClipCue.*.dll", log) && copied;
   const wchar_t* filesToCopy[] = {L"LICENSE", L"NOTICE", L"README.md"};
   for (const wchar_t* file : filesToCopy) {
     std::wstring src = PathCombineSimple(sourceDir, file);
@@ -373,7 +374,7 @@ bool InstallTo(const std::wstring& sourceDir, const std::wstring& installDir, bo
   CopyDirectoryRecursive(PathCombineSimple(sourceDir, L"scripts"), PathCombineSimple(installDir, L"scripts"), log);
   CopyDirectoryRecursive(PathCombineSimple(sourceDir, L"docs"), PathCombineSimple(installDir, L"docs"), log);
 
-  SetRegString(HKEY_CURRENT_USER, L"Software\\PathCue", L"InstallDir", installDir);
+  SetRegString(HKEY_CURRENT_USER, L"Software\\ClipCue", L"InstallDir", installDir);
   WriteUninstallInfo(installDir);
 
   if (registerShell) {
@@ -391,15 +392,15 @@ bool InstallTo(const std::wstring& sourceDir, const std::wstring& installDir, bo
 }
 
 bool UninstallFrom(const std::wstring& installDir, HWND log) {
-  AppendLog(log, L"Uninstalling PathCue from: " + installDir);
+  AppendLog(log, L"Uninstalling ClipCue from: " + installDir);
   StopMonitor(log);
   DisableMonitorAutoStart(log);
   HRESULT hr = CallShellRegistration(installDir, false);
   if (FAILED(hr)) AppendLog(log, L"Shell unregister returned: " + FormatHResult(hr));
   else AppendLog(log, L"Classic Explorer context menu unregistered.");
 
-  SHDeleteKeyW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PathCue");
-  SHDeleteKeyW(HKEY_CURRENT_USER, L"Software\\PathCue");
+  SHDeleteKeyW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ClipCue");
+  SHDeleteKeyW(HKEY_CURRENT_USER, L"Software\\ClipCue");
   DeleteDirectoryRecursive(StartMenuPath(), log);
 
   std::wstring runningDir = ModuleDir();
@@ -407,7 +408,7 @@ bool UninstallFrom(const std::wstring& installDir, HWND log) {
     AppendLog(log, L"Installer is running from the install directory; remaining files will be removed after reboot if locked.");
   }
   DeleteDirectoryRecursive(installDir, log);
-  AppendLog(log, L"Uninstall complete. User data under %LOCALAPPDATA%\\PathCue is left intact.");
+  AppendLog(log, L"Uninstall complete. User data under %LOCALAPPDATA%\\ClipCue is left intact.");
   return true;
 }
 
@@ -419,7 +420,7 @@ std::wstring PickFolder(HWND owner, const std::wstring& initial) {
   DWORD opts = 0;
   dialog->GetOptions(&opts);
   dialog->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-  dialog->SetTitle(L"Choose PathCue install folder");
+  dialog->SetTitle(L"Choose ClipCue install folder");
   if (!initial.empty()) {
     IShellItem* item = nullptr;
     if (SUCCEEDED(SHCreateItemFromParsingName(initial.c_str(), nullptr, IID_PPV_ARGS(&item)))) {
@@ -455,7 +456,7 @@ bool IsChecked(HWND button) { return SendMessageW(button, BM_GETCHECK, 0, 0) == 
 
 void OnCreate(InstallerState* s) {
   s->font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-  MakeControl(s, L"STATIC", L"PathCue Installer", WS_CHILD | WS_VISIBLE, 16, 12, 400, 24, -1);
+  MakeControl(s, L"STATIC", L"ClipCue Installer", WS_CHILD | WS_VISIBLE, 16, 12, 400, 24, -1);
   MakeControl(s, L"STATIC", L"Install folder:", WS_CHILD | WS_VISIBLE, 16, 50, 105, 22, -1);
   s->installDir = MakeControl(s, L"EDIT", ReadInstallDirFromRegistry().c_str(), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 122, 46, 488, 24, IDC_INSTALL_DIR);
   MakeControl(s, L"BUTTON", L"Browse...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 620, 45, 90, 27, IDC_BROWSE);
@@ -463,7 +464,7 @@ void OnCreate(InstallerState* s) {
   s->registerShell = MakeControl(s, L"BUTTON", L"Register Explorer classic context menu for current user", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 122, 84, 420, 24, IDC_REGISTER_SHELL);
   s->shortcuts = MakeControl(s, L"BUTTON", L"Create Start Menu shortcuts", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 122, 112, 300, 24, IDC_SHORTCUTS);
   s->startMonitor = MakeControl(s, L"BUTTON", L"Start background monitor with tree tray icon at sign-in", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 122, 140, 430, 24, IDC_START_MONITOR);
-  s->launchUi = MakeControl(s, L"BUTTON", L"Launch PathCue Control Panel after install", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 122, 168, 360, 24, IDC_LAUNCH_UI);
+  s->launchUi = MakeControl(s, L"BUTTON", L"Launch ClipCue Control Panel after install", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 122, 168, 360, 24, IDC_LAUNCH_UI);
   SendMessageW(s->registerShell, BM_SETCHECK, BST_CHECKED, 0);
   SendMessageW(s->shortcuts, BM_SETCHECK, BST_CHECKED, 0);
   SendMessageW(s->startMonitor, BM_SETCHECK, BST_CHECKED, 0);
@@ -503,12 +504,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
           bool ok = InstallTo(ModuleDir(), target, IsChecked(s->registerShell), IsChecked(s->shortcuts), IsChecked(s->startMonitor), s->status);
           SetCursor(LoadCursorW(nullptr, IDC_ARROW));
           if (ok && IsChecked(s->launchUi)) {
-            ShellExecuteW(hwnd, L"open", PathCombineSimple(target, L"PathCue.UI.exe").c_str(), nullptr, target.c_str(), SW_SHOWNORMAL);
+            ShellExecuteW(hwnd, L"open", PathCombineSimple(target, L"ClipCue.UI.exe").c_str(), nullptr, target.c_str(), SW_SHOWNORMAL);
           }
           return 0;
         }
         case IDC_UNINSTALL: {
-          if (MessageBoxW(hwnd, L"Uninstall PathCue? User data and history are left intact.", L"PathCue", MB_YESNO | MB_ICONQUESTION) == IDYES) {
+          if (MessageBoxW(hwnd, L"Uninstall ClipCue? User data and history are left intact.", L"ClipCue", MB_YESNO | MB_ICONQUESTION) == IDYES) {
             SetCursor(LoadCursorW(nullptr, IDC_WAIT));
             UninstallFrom(GetEditText(s->installDir), s->status);
             SetCursor(LoadCursorW(nullptr, IDC_ARROW));
@@ -563,14 +564,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   WNDCLASSEXW wc{};
   wc.cbSize = sizeof(wc);
   wc.hInstance = instance;
-  wc.lpszClassName = L"PathCueInstallerWindow";
+  wc.lpszClassName = L"ClipCueInstallerWindow";
   wc.lpfnWndProc = WndProc;
   wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
   wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
   wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
   RegisterClassExW(&wc);
 
-  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"PathCue Installer", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"ClipCue Installer", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
                               CW_USEDEFAULT, CW_USEDEFAULT, 745, 530, nullptr, nullptr, instance, &state);
   if (!hwnd) return 1;
   ShowWindow(hwnd, show);

@@ -1,4 +1,3 @@
-LIBRARY "PathCue.ShellClassic"
 EXPORTS
   DllCanUnloadNow PRIVATE
   DllGetClassObject PRIVATE

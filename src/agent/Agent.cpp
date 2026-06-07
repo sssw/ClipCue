@@ -1,26 +1,28 @@
-#include "pathcue/FileOps.h"
-#include "pathcue/History.h"
-#include "pathcue/Job.h"
-#include "pathcue/PathUtils.h"
-#include "pathcue/WinUtils.h"
-#include "pathcue/CryptoStore.h"
+#include "clipcue/FileOps.h"
+#include "clipcue/History.h"
+#include "clipcue/Job.h"
+#include "clipcue/PathUtils.h"
+#include "clipcue/WinUtils.h"
+#include "clipcue/CryptoStore.h"
 
 #include <shobjidl.h>
 #include <shellapi.h>
 #include <iostream>
+#include <map>
 #include <sstream>
 
-using namespace pathcue;
+using namespace clipcue;
 
 namespace {
 
 void PrintUsage() {
-  std::wcout << L"PathCue.Agent " << PATHCUE_VERSION << L"\n"
+  std::wcout << L"ClipCue.Agent " << CLIPCUE_VERSION << L"\n"
              << L"Usage:\n"
-             << L"  PathCue.Agent --pick-dest --op copy|move --sources-file <file>\n"
-             << L"  PathCue.Agent --shell-job <jobfile>\n"
-             << L"  PathCue.Agent --build-cache\n"
-             << L"  PathCue.Agent --cleanup\n";
+             << L"  ClipCue.Agent --pick-dest --op copy|move --sources-file <file>\n"
+             << L"  ClipCue.Agent --shell-job <jobfile>\n"
+             << L"  ClipCue.Agent --paste-queue --target <folder> [--op copy|move|both]\n"
+             << L"  ClipCue.Agent --build-cache\n"
+             << L"  ClipCue.Agent --cleanup\n";
 }
 
 std::wstring ArgValue(const std::vector<std::wstring>& args, const std::wstring& key) {
@@ -44,7 +46,7 @@ std::wstring PickFolder(HWND owner) {
   DWORD opts = 0;
   dialog->GetOptions(&opts);
   dialog->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
-  dialog->SetTitle(L"Select PathCue target folder");
+  dialog->SetTitle(L"Select ClipCue target folder");
   std::wstring selected;
   if (SUCCEEDED(dialog->Show(owner))) {
     IShellItem* item = nullptr;
@@ -65,13 +67,13 @@ std::wstring FindElevatedExe() {
   std::wstring exe = GetProgramPath();
   size_t pos = exe.find_last_of(L"\\/");
   std::wstring dir = pos == std::wstring::npos ? L"." : exe.substr(0, pos);
-  return PathCombineSimple(dir, L"PathCue.Elevated.exe");
+  return PathCombineSimple(dir, L"ClipCue.Elevated.exe");
 }
 
 JobResult RunElevated(const JobRequest& job) {
   JobResult result;
-  std::wstring jobFile = CreateTempPathCueFile(L".job");
-  std::wstring resultFile = CreateTempPathCueFile(L".result");
+  std::wstring jobFile = CreateTempClipCueFile(L".job");
+  std::wstring resultFile = CreateTempClipCueFile(L".result");
   std::wstring err;
   if (!SaveJobFile(job, jobFile, &err)) {
     result.hr = E_FAIL;
@@ -133,10 +135,98 @@ int ExecuteAndRecord(const JobRequest& job) {
   db.WriteMenuCache(L"", &error);
 
   if (FAILED(result.hr) || result.anyAborted) {
-    MessageBoxW(nullptr, result.message.empty() ? L"PathCue operation failed." : result.message.c_str(), L"PathCue", MB_ICONERROR);
+    MessageBoxW(nullptr, result.message.empty() ? L"ClipCue operation failed." : result.message.c_str(), L"ClipCue", MB_ICONERROR);
     return 2;
   }
   return 0;
+}
+
+std::wstring QueuePreviewText(const std::vector<ClipboardHistoryEntry>& entries, const std::wstring& target) {
+  int copyFiles = 0;
+  int moveFiles = 0;
+  int copyGroups = 0;
+  int moveGroups = 0;
+  for (const auto& entry : entries) {
+    if (entry.op == OperationKind::Copy) {
+      ++copyGroups;
+      copyFiles += static_cast<int>(entry.files.size());
+    } else if (entry.op == OperationKind::Move) {
+      ++moveGroups;
+      moveFiles += static_cast<int>(entry.files.size());
+    }
+  }
+
+  std::wstringstream ss;
+  ss << L"ClipCue will apply the recorded clipboard queue to:\r\n" << target << L"\r\n\r\n";
+  if (copyFiles > 0) ss << L"Copy: " << copyFiles << L" file(s) from " << copyGroups << L" clipboard action(s)\r\n";
+  if (moveFiles > 0) ss << L"Move: " << moveFiles << L" file(s) from " << moveGroups << L" clipboard action(s)\r\n";
+  ss << L"\r\nPreview:\r\n";
+
+  int shown = 0;
+  for (const auto& entry : entries) {
+    for (const auto& file : entry.files) {
+      if (shown >= 16) {
+        ss << L"  ...\r\n";
+        return ss.str();
+      }
+      ss << L"  [" << ToString(entry.op) << L"] " << file << L"\r\n";
+      ++shown;
+    }
+  }
+  return ss.str();
+}
+
+int ExecuteClipboardQueue(OperationKind requestedOp, const std::wstring& target) {
+  if (target.empty() || !DirectoryExists(target)) {
+    MessageBoxW(nullptr, L"Select an existing target folder for the ClipCue queue.", L"ClipCue", MB_ICONERROR);
+    return 1;
+  }
+
+  HistoryDatabase db;
+  std::wstring err;
+  if (!db.Load(&err)) {
+    MessageBoxW(nullptr, err.empty() ? L"Unable to load ClipCue clipboard history." : err.c_str(), L"ClipCue", MB_ICONERROR);
+    return 1;
+  }
+
+  auto entries = db.GetSelectedFileClipboardEntries(requestedOp);
+  if (entries.empty()) {
+    MessageBoxW(nullptr, L"No selected file clipboard entries are queued. Copy or cut files first, or reselect entries in the ClipCue control panel.", L"ClipCue", MB_ICONINFORMATION);
+    return 0;
+  }
+
+  std::wstring preview = QueuePreviewText(entries, NormalizePathForDisplay(target));
+  if (MessageBoxW(nullptr, preview.c_str(), L"ClipCue Operation Preview", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) return 0;
+
+  std::map<OperationKind, std::vector<std::wstring>> grouped;
+  for (const auto& entry : entries) {
+    if (entry.op != OperationKind::Copy && entry.op != OperationKind::Move) continue;
+    grouped[entry.op].insert(grouped[entry.op].end(), entry.files.begin(), entry.files.end());
+  }
+
+  int rc = 0;
+  bool attempted = false;
+  for (OperationKind op : {OperationKind::Copy, OperationKind::Move}) {
+    auto it = grouped.find(op);
+    if (it == grouped.end() || it->second.empty()) continue;
+    attempted = true;
+    JobRequest job;
+    job.op = op;
+    job.targetDir = target;
+    job.sources = it->second;
+    job.conflictPolicy = L"ask";
+    job.overwritePolicy = L"ask";
+    job.allowElevation = true;
+    int jobRc = ExecuteAndRecord(job);
+    if (jobRc != 0) rc = jobRc;
+  }
+
+  if (attempted) {
+    HistoryDatabase updated;
+    updated.Load(nullptr);
+    updated.WriteMenuCache(L"", nullptr);
+  }
+  return rc;
 }
 
 }  // namespace
@@ -152,7 +242,7 @@ int wmain() {
     HistoryDatabase db;
     std::wstring err;
     if (!db.Load(&err) || !db.WriteMenuCache(L"", &err)) {
-      std::wcerr << L"PathCue cache failed: " << err << L"\n";
+      std::wcerr << L"ClipCue cache failed: " << err << L"\n";
       return 1;
     }
     std::wcout << L"Menu cache written to " << EncryptedRecordStore::DefaultMenuCachePath() << L"\n";
@@ -176,10 +266,17 @@ int wmain() {
     JobRequest job;
     std::wstring err;
     if (!LoadJobFile(jobFile, &job, &err)) {
-      MessageBoxW(nullptr, err.c_str(), L"PathCue", MB_ICONERROR);
+      MessageBoxW(nullptr, err.c_str(), L"ClipCue", MB_ICONERROR);
       return 1;
     }
     return ExecuteAndRecord(job);
+  }
+
+  if (HasArg(args, L"--paste-queue")) {
+    std::wstring target = ArgValue(args, L"--target");
+    OperationKind op = OperationFromString(ArgValue(args, L"--op"));
+    if (op == OperationKind::Unknown) op = OperationKind::Both;
+    return ExecuteClipboardQueue(op, target);
   }
 
   if (HasArg(args, L"--pick-dest")) {
@@ -188,7 +285,7 @@ int wmain() {
     std::vector<std::wstring> sources;
     std::wstring err;
     if (!LoadSourcesFile(sourcesFile, &sources, &err)) {
-      MessageBoxW(nullptr, err.c_str(), L"PathCue", MB_ICONERROR);
+      MessageBoxW(nullptr, err.c_str(), L"ClipCue", MB_ICONERROR);
       return 1;
     }
     std::wstring target = PickFolder(nullptr);

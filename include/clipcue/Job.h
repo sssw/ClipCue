@@ -1,13 +1,13 @@
 #pragma once
 
-#include "pathcue/History.h"
+#include "clipcue/History.h"
 
 #include <windows.h>
 
 #include <string>
 #include <vector>
 
-namespace pathcue {
+namespace clipcue {
 
 struct JobRequest {
   OperationKind op = OperationKind::Unknown;
@@ -35,6 +35,6 @@ bool LoadSourcesFile(const std::wstring& path, std::vector<std::wstring>* source
 bool SaveResultFile(const JobResult& result, const std::wstring& path, std::wstring* error = nullptr);
 bool LoadResultFile(const std::wstring& path, JobResult* result, std::wstring* error = nullptr);
 
-std::wstring CreateTempPathCueFile(const std::wstring& extension);
+std::wstring CreateTempClipCueFile(const std::wstring& extension);
 
-}  // namespace pathcue
+}  // namespace clipcue

@@ -2,17 +2,17 @@ cmake_minimum_required(VERSION 3.24)
 if(POLICY CMP0091)
   cmake_policy(SET CMP0091 NEW)
 endif()
-project(PathCue VERSION 0.2.0 LANGUAGES CXX)
+project(ClipCue VERSION 0.2.0 LANGUAGES CXX)
 
-option(PATHCUE_BUILD_MODERN_SHELL "Build experimental Windows 11 IExplorerCommand shell extension" OFF)
-option(PATHCUE_BUILD_TESTS "Build smoke tests" ON)
+option(CLIPCUE_BUILD_MODERN_SHELL "Build experimental Windows 11 IExplorerCommand shell extension" OFF)
+option(CLIPCUE_BUILD_TESTS "Build smoke tests" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(NOT WIN32)
-  message(FATAL_ERROR "PathCue is a Windows-only project. Build on windows-latest or a Windows machine.")
+  message(FATAL_ERROR "ClipCue is a Windows-only project. Build on windows-latest or a Windows machine.")
 endif()
 
 add_compile_definitions(
@@ -21,7 +21,7 @@ add_compile_definitions(
   WIN32_LEAN_AND_MEAN
   NOMINMAX
   _WIN32_WINNT=0x0601
-  PATHCUE_VERSION=L"${PROJECT_VERSION}"
+  CLIPCUE_VERSION=L"${PROJECT_VERSION}"
 )
 
 if(MSVC)
@@ -34,17 +34,17 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-set(PATHCUE_COMMON_HEADERS
-  include/pathcue/Version.h
-  include/pathcue/WinUtils.h
-  include/pathcue/PathUtils.h
-  include/pathcue/CryptoStore.h
-  include/pathcue/History.h
-  include/pathcue/Job.h
-  include/pathcue/FileOps.h
+set(CLIPCUE_COMMON_HEADERS
+  include/clipcue/Version.h
+  include/clipcue/WinUtils.h
+  include/clipcue/PathUtils.h
+  include/clipcue/CryptoStore.h
+  include/clipcue/History.h
+  include/clipcue/Job.h
+  include/clipcue/FileOps.h
 )
 
-set(PATHCUE_COMMON_SOURCES
+set(CLIPCUE_COMMON_SOURCES
   src/common/WinUtils.cpp
   src/common/PathUtils.cpp
   src/common/CryptoStore.cpp
@@ -53,67 +53,67 @@ set(PATHCUE_COMMON_SOURCES
   src/common/FileOps.cpp
 )
 
-add_library(pathcue_common STATIC ${PATHCUE_COMMON_HEADERS} ${PATHCUE_COMMON_SOURCES})
-target_link_libraries(pathcue_common PUBLIC shell32 shlwapi ole32 uuid advapi32 crypt32 user32)
+add_library(clipcue_common STATIC ${CLIPCUE_COMMON_HEADERS} ${CLIPCUE_COMMON_SOURCES})
+target_link_libraries(clipcue_common PUBLIC shell32 shlwapi ole32 uuid advapi32 crypt32 user32)
 
-target_compile_definitions(pathcue_common PUBLIC PATHCUE_HAS_DPAPI_STORE=1)
+target_compile_definitions(clipcue_common PUBLIC CLIPCUE_HAS_DPAPI_STORE=1)
 
-add_executable(PathCue.Agent src/agent/Agent.cpp)
-target_link_libraries(PathCue.Agent PRIVATE pathcue_common comdlg32)
+add_executable(ClipCue.Agent src/agent/Agent.cpp)
+target_link_libraries(ClipCue.Agent PRIVATE clipcue_common comdlg32)
 
-add_executable(PathCue.Worker src/worker/Worker.cpp)
-target_link_libraries(PathCue.Worker PRIVATE pathcue_common)
+add_executable(ClipCue.Worker src/worker/Worker.cpp)
+target_link_libraries(ClipCue.Worker PRIVATE clipcue_common)
 
-add_executable(PathCue.Elevated src/elevated/Elevated.cpp src/elevated/Elevated.rc)
-target_link_libraries(PathCue.Elevated PRIVATE pathcue_common)
-target_include_directories(PathCue.Elevated PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/elevated)
+add_executable(ClipCue.Elevated src/elevated/Elevated.cpp src/elevated/Elevated.rc)
+target_link_libraries(ClipCue.Elevated PRIVATE clipcue_common)
+target_include_directories(ClipCue.Elevated PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/elevated)
 if(MSVC)
-  target_link_options(PathCue.Elevated PRIVATE /MANIFEST:NO)
+  target_link_options(ClipCue.Elevated PRIVATE /MANIFEST:NO)
 endif()
 
-add_executable(PathCue.Settings src/settings/Settings.cpp)
-target_link_libraries(PathCue.Settings PRIVATE pathcue_common)
+add_executable(ClipCue.Settings src/settings/Settings.cpp)
+target_link_libraries(ClipCue.Settings PRIVATE clipcue_common)
 
-add_executable(PathCue.Monitor WIN32 src/monitor/Monitor.cpp)
-target_link_libraries(PathCue.Monitor PRIVATE pathcue_common shell32 gdi32)
+add_executable(ClipCue.Monitor WIN32 src/monitor/Monitor.cpp)
+target_link_libraries(ClipCue.Monitor PRIVATE clipcue_common shell32 gdi32)
 
-add_executable(PathCue.UI WIN32 src/ui/PathCueUI.cpp)
-target_link_libraries(PathCue.UI PRIVATE pathcue_common comctl32 comdlg32 ole32 shell32 shlwapi)
+add_executable(ClipCue.UI WIN32 src/ui/ClipCueUI.cpp)
+target_link_libraries(ClipCue.UI PRIVATE clipcue_common comctl32 comdlg32 ole32 shell32 shlwapi)
 
-add_executable(PathCue.Installer WIN32 src/installer/Installer.cpp)
-target_link_libraries(PathCue.Installer PRIVATE pathcue_common comctl32 ole32 shell32 shlwapi advapi32)
+add_executable(ClipCue.Installer WIN32 src/installer/Installer.cpp)
+target_link_libraries(ClipCue.Installer PRIVATE clipcue_common comctl32 ole32 shell32 shlwapi advapi32)
 
-add_library(PathCue.ShellClassic SHARED
+add_library(ClipCue.ShellClassic SHARED
   src/shell_classic/ShellClassic.cpp
   src/shell_classic/ShellClassic.def
 )
-target_link_libraries(PathCue.ShellClassic PRIVATE shell32 shlwapi ole32 uuid advapi32 user32)
-set_target_properties(PathCue.ShellClassic PROPERTIES OUTPUT_NAME "PathCue.ShellClassic")
+target_link_libraries(ClipCue.ShellClassic PRIVATE shell32 shlwapi ole32 uuid advapi32 user32)
+set_target_properties(ClipCue.ShellClassic PROPERTIES OUTPUT_NAME "ClipCue.ShellClassic")
 
-if(PATHCUE_BUILD_MODERN_SHELL)
-  add_library(PathCue.ShellModern SHARED
+if(CLIPCUE_BUILD_MODERN_SHELL)
+  add_library(ClipCue.ShellModern SHARED
     src/shell_modern/ShellModern.cpp
     src/shell_modern/ShellModern.def
   )
-  target_link_libraries(PathCue.ShellModern PRIVATE shell32 shlwapi ole32 uuid advapi32 user32)
+  target_link_libraries(ClipCue.ShellModern PRIVATE shell32 shlwapi ole32 uuid advapi32 user32)
 endif()
 
-if(PATHCUE_BUILD_TESTS)
+if(CLIPCUE_BUILD_TESTS)
   enable_testing()
-  add_executable(PathCue.Tests tests/PathCue.Tests.cpp)
-  target_link_libraries(PathCue.Tests PRIVATE pathcue_common)
-  add_test(NAME PathCueSmoke COMMAND PathCue.Tests)
+  add_executable(ClipCue.Tests tests/ClipCue.Tests.cpp)
+  target_link_libraries(ClipCue.Tests PRIVATE clipcue_common)
+  add_test(NAME ClipCueSmoke COMMAND ClipCue.Tests)
 endif()
 
 install(TARGETS
-  PathCue.Agent
-  PathCue.Worker
-  PathCue.Elevated
-  PathCue.Settings
-  PathCue.Monitor
-  PathCue.UI
-  PathCue.Installer
-  PathCue.ShellClassic
+  ClipCue.Agent
+  ClipCue.Worker
+  ClipCue.Elevated
+  ClipCue.Settings
+  ClipCue.Monitor
+  ClipCue.UI
+  ClipCue.Installer
+  ClipCue.ShellClassic
   RUNTIME DESTINATION .
   LIBRARY DESTINATION .
   ARCHIVE DESTINATION lib
