@@ -1,19 +1,21 @@
 # Installer and UI
 
-ClipCue now includes three user-facing Windows applications in addition to the command-line tools.
+ClipCue includes three dependency-free, native Windows applications in addition to the command-line tools. This page documents the modernized installer and control-center workflows.
 
 ## `ClipCue.Installer.exe`
 
-The installer is a dependency-free per-user installer. It is intentionally implemented as a native Win32 executable instead of requiring WiX, NSIS, MSIX, or external build tooling.
+The installer is a per-user Win32 installer. It does not require WiX, NSIS, MSIX, or administrator rights. The modern installer presents the setup flow as three clear stages: install location, recommended integrations, and finish/open actions.
 
 It can:
 
 - copy the compiled ClipCue binaries into `%LOCALAPPDATA%\Programs\ClipCue` by default;
+- install to a custom absolute folder selected with the folder picker;
 - register `ClipCue.ShellClassic.dll` for the current user under `HKCU\Software\Classes`;
 - write `HKCU\Software\ClipCue\InstallDir` so the Explorer extension can find `ClipCue.Agent.exe`;
 - verify, auto-start, and launch `ClipCue.Monitor.exe` as the current-user background monitor and tree tray icon;
-- create Start Menu shortcuts;
-- create an Add/Remove Programs entry under the current user uninstall registry key;
+- create Start Menu shortcuts for the Control Center, Path Clip Queue, monitor, installer, and uninstaller;
+- create an Add/Remove Programs entry under the current-user uninstall registry key;
+- launch the Control Center and optionally the Path Clip Queue immediately after install;
 - uninstall the shell extension and installed files while leaving user data/history under `%LOCALAPPDATA%\ClipCue` intact.
 
 ### GUI use
@@ -24,7 +26,7 @@ Run:
 .\ClipCue.Installer.exe
 ```
 
-Choose the install directory, keep the default options checked, and click **Install / Repair**. The default options include the background monitor, which starts immediately and again at future sign-ins.
+Use the default location or choose a custom absolute folder. Keep the recommended integration options checked for the smoothest workflow: Explorer menu registration, Start Menu shortcuts, and the background monitor. Click **Install / Repair**. The log pane shows every file and integration step.
 
 ### Silent install
 
@@ -57,7 +59,7 @@ The tray menu can:
 - learn external Explorer copy/cut/paste and move routes by correlating file clipboard data with Shell/file-system changes;
 - rebuild quick menu suggestions from pinned targets and detected target folders;
 - open the dedicated Path Clip Queue workspace;
-- open the native control panel;
+- open the native Control Center;
 - open the ClipCue data folder;
 - rebuild the Explorer menu cache;
 - run 90-day history cleanup;
@@ -66,23 +68,7 @@ The tray menu can:
 
 ## `ClipCue.UI.exe`
 
-`ClipCue.UI.exe` is the native control panel.
-
-`ClipCue.UI.exe queue` opens the dedicated Path Clip Queue workspace.
-
-It can:
-
-- show the encrypted history store path and plaintext menu-cache path;
-- show pinned quick targets;
-- show detected quick targets used by `ClipCue Move to...` and `ClipCue Copy to...`;
-- add a pinned target using a folder picker;
-- remove a pinned target;
-- rebuild the Explorer menu cache;
-- run 90-day history cleanup;
-- show recent ClipCue operations;
-- register or unregister the classic Explorer context menu for the current user;
-- open the ClipCue data folder;
-- launch the installer.
+`ClipCue.UI.exe` is the modern native Control Center. It is still implemented with dependency-free Win32 controls, but the workflow is organized around user tasks rather than implementation details.
 
 Run it directly:
 
@@ -91,6 +77,57 @@ Run it directly:
 ```
 
 or open it through the Start Menu shortcut created by the installer.
+
+### Control Center pages
+
+#### Targets & path queue
+
+This page combines target management and queue execution in one workflow:
+
+- pin quick targets and choose whether they appear for copy, move, or both;
+- review smart targets detected from previous ClipCue and Explorer activity;
+- double-click a pinned or suggested target to use it as the queue target;
+- open the selected target folder directly from the UI;
+- review the active path clipboard queue and inspect full entry details;
+- mark selected queue entries as copy, move, skipped, or active;
+- save the current queue selection;
+- archive the active queue into history;
+- apply the prepared queue to a selected folder with **Apply all**, **Copy only**, or **Move only**.
+
+#### Text editor
+
+The Text editor page turns clipboard text history into an editable workspace:
+
+- select one or more text clips and merge them into the editor;
+- select all clips with one click;
+- clear the editor;
+- normalize whitespace for quick cleanup;
+- copy edited text back to the clipboard;
+- paste edited text back to the previously focused application when possible;
+- see live character and line counts while editing.
+
+#### System status
+
+The System status page provides diagnostics and maintenance:
+
+- show the encrypted history store path and plaintext menu-cache path;
+- show pinned quick-target, operation-record, path-queue, and text-history counts;
+- show recent ClipCue operations;
+- register or unregister the classic Explorer context menu for the current user;
+- rebuild the Explorer menu cache;
+- run 90-day history cleanup;
+- open the ClipCue data folder;
+- launch the installer.
+
+### Dedicated Path Clip Queue workspace
+
+`ClipCue.UI.exe queue` opens a focused queue-only window for users who want to keep the batch apply flow separate from the full Control Center.
+
+```powershell
+.\ClipCue.UI.exe queue
+```
+
+The dedicated workspace supports queue inspection, copy/move/skip/activate actions, target folder selection, applying the queue, opening the full Control Center, and refreshing the queue state.
 
 ## CLI still available
 
