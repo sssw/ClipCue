@@ -6,89 +6,97 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <shlobj.h>
-#include <shlwapi.h>
 #include <shellapi.h>
 
 #include <algorithm>
 #include <cstring>
 #include <ctime>
+#include <cwctype>
 #include <sstream>
 #include <string>
 #include <vector>
-
-#pragma comment(lib, "comctl32.lib")
 
 using namespace clipcue;
 
 namespace {
 
-constexpr int IDC_STATUS = 1001;
-constexpr int IDC_PINS = 1002;
-constexpr int IDC_HISTORY = 1003;
-constexpr int IDC_OP_COMBO = 1004;
-constexpr int IDC_ADD_PIN = 1005;
-constexpr int IDC_REMOVE_PIN = 1006;
-constexpr int IDC_BUILD_CACHE = 1007;
-constexpr int IDC_CLEANUP = 1008;
-constexpr int IDC_REFRESH = 1009;
-constexpr int IDC_OPEN_DATA = 1010;
-constexpr int IDC_REGISTER_MENU = 1011;
-constexpr int IDC_UNREGISTER_MENU = 1012;
-constexpr int IDC_OPEN_INSTALLER = 1013;
-constexpr int IDC_CLOSE = 1014;
-constexpr int IDC_SUGGESTIONS = 1015;
-constexpr int IDC_CLIPBOARD_FILES = 1016;
-constexpr int IDC_CLIPBOARD_TEXTS = 1017;
-constexpr int IDC_TEXT_EDITOR = 1018;
-constexpr int IDC_SAVE_FILE_QUEUE = 1019;
-constexpr int IDC_CLEAR_FILE_QUEUE = 1020;
-constexpr int IDC_COPY_TEXT = 1021;
-constexpr int IDC_PASTE_TEXT = 1022;
-constexpr int IDC_TAB = 1023;
-constexpr int IDC_QUEUE_COPY = 1024;
-constexpr int IDC_QUEUE_MOVE = 1025;
-constexpr int IDC_QUEUE_SKIP = 1026;
-constexpr int IDC_QUEUE_ACTIVATE = 1027;
-constexpr int IDC_QUEUE_DETAILS = 1028;
-constexpr int IDC_QUEUE_SUMMARY = 1029;
-constexpr int IDC_QUEUE_TARGET = 1030;
-constexpr int IDC_QUEUE_PICK_TARGET = 1031;
-constexpr int IDC_QUEUE_APPLY_ALL = 1032;
-constexpr int IDC_QUEUE_APPLY_COPY = 1033;
-constexpr int IDC_QUEUE_APPLY_MOVE = 1034;
-constexpr int IDC_OPEN_PANEL = 1035;
+constexpr int IDC_NAV_PATHS = 1001;
+constexpr int IDC_NAV_TEXT = 1002;
+constexpr int IDC_NAV_STATUS = 1003;
+constexpr int IDC_DASH = 1004;
+constexpr int IDC_PINS = 1010;
+constexpr int IDC_SUGGEST = 1011;
+constexpr int IDC_OP = 1012;
+constexpr int IDC_ADD_PIN = 1013;
+constexpr int IDC_REMOVE_PIN = 1014;
+constexpr int IDC_USE_TARGET = 1015;
+constexpr int IDC_OPEN_TARGET = 1016;
+constexpr int IDC_TARGET = 1017;
+constexpr int IDC_PICK_TARGET = 1018;
+constexpr int IDC_QUEUE = 1020;
+constexpr int IDC_QUEUE_DETAILS = 1021;
+constexpr int IDC_QUEUE_COPY = 1022;
+constexpr int IDC_QUEUE_MOVE = 1023;
+constexpr int IDC_QUEUE_SKIP = 1024;
+constexpr int IDC_QUEUE_ACTIVE = 1025;
+constexpr int IDC_QUEUE_ARCHIVE = 1026;
+constexpr int IDC_APPLY_ALL = 1027;
+constexpr int IDC_APPLY_COPY = 1028;
+constexpr int IDC_APPLY_MOVE = 1029;
+constexpr int IDC_TEXT_LIST = 1030;
+constexpr int IDC_TEXT_EDIT = 1031;
+constexpr int IDC_TEXT_META = 1032;
+constexpr int IDC_TEXT_ALL = 1033;
+constexpr int IDC_TEXT_CLEAR = 1034;
+constexpr int IDC_TEXT_NORMALIZE = 1035;
+constexpr int IDC_TEXT_COPY = 1036;
+constexpr int IDC_TEXT_PASTE = 1037;
+constexpr int IDC_STATUS = 1040;
+constexpr int IDC_HISTORY = 1041;
+constexpr int IDC_REGISTER = 1042;
+constexpr int IDC_UNREGISTER = 1043;
+constexpr int IDC_BUILD_CACHE = 1044;
+constexpr int IDC_CLEANUP = 1045;
+constexpr int IDC_OPEN_DATA = 1046;
+constexpr int IDC_INSTALLER = 1047;
+constexpr int IDC_REFRESH = 1048;
+constexpr int IDC_CLOSE = 1049;
 
-enum UiPage {
-  kPagePaths = 0,
-  kPageText = 1,
-  kPageStatus = 2,
-  kPageCount = 3,
-};
+constexpr COLORREF kBg = RGB(241, 245, 249);
+constexpr COLORREF kCard = RGB(255, 255, 255);
+constexpr COLORREF kBorder = RGB(203, 213, 225);
+constexpr COLORREF kAccent = RGB(37, 99, 235);
+constexpr COLORREF kText = RGB(15, 23, 42);
 
-struct UiState {
+enum Page { kPaths = 0, kText = 1, kStatus = 2, kPageCount = 3 };
+
+struct State {
   HWND hwnd = nullptr;
-  HWND tab = nullptr;
-  HWND status = nullptr;
+  HWND dash = nullptr;
   HWND pins = nullptr;
-  HWND suggestions = nullptr;
+  HWND suggest = nullptr;
+  HWND op = nullptr;
+  HWND target = nullptr;
+  HWND queue = nullptr;
+  HWND queueDetails = nullptr;
+  HWND textList = nullptr;
+  HWND textEdit = nullptr;
+  HWND textMeta = nullptr;
+  HWND status = nullptr;
   HWND history = nullptr;
-  HWND fileQueue = nullptr;
-  HWND fileQueueDetails = nullptr;
-  HWND textHistory = nullptr;
-  HWND textEditor = nullptr;
-  HWND opCombo = nullptr;
-  HWND queueSummary = nullptr;
-  HWND queueTarget = nullptr;
+  HWND previous = nullptr;
   HFONT font = nullptr;
   HFONT titleFont = nullptr;
-  HBRUSH background = nullptr;
-  HWND previousForeground = nullptr;
-  int activePage = kPagePaths;
-  bool queueMode = false;
-  std::vector<HWND> pageControls[kPageCount];
+  HFONT sectionFont = nullptr;
+  HFONT monoFont = nullptr;
+  HBRUSH white = nullptr;
+  int page = kPaths;
+  bool queueOnly = false;
+  std::vector<HWND> pages[kPageCount];
   std::vector<PinnedTarget> pinsData;
-  std::vector<ClipboardHistoryEntry> fileEntriesData;
-  std::vector<ClipboardHistoryEntry> textEntriesData;
+  std::vector<std::wstring> suggestionTargets;
+  std::vector<ClipboardHistoryEntry> fileData;
+  std::vector<ClipboardHistoryEntry> textData;
 };
 
 std::wstring ModuleDir() {
@@ -96,47 +104,48 @@ std::wstring ModuleDir() {
   size_t pos = exe.find_last_of(L"\\/");
   return pos == std::wstring::npos ? L"." : exe.substr(0, pos);
 }
-
-std::wstring ShellDllPath() { return PathCombineSimple(ModuleDir(), L"ClipCue.ShellClassic.dll"); }
 std::wstring AgentPath() { return PathCombineSimple(ModuleDir(), L"ClipCue.Agent.exe"); }
 std::wstring InstallerPath() { return PathCombineSimple(ModuleDir(), L"ClipCue.Installer.exe"); }
+std::wstring ShellDllPath() { return PathCombineSimple(ModuleDir(), L"ClipCue.ShellClassic.dll"); }
 
-void SetControlFont(HWND h, HFONT font) {
-  if (h && font) SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+HFONT MakeFont(int pt, int weight = FW_NORMAL, const wchar_t* face = L"Segoe UI") {
+  HDC dc = GetDC(nullptr);
+  int px = -MulDiv(pt, GetDeviceCaps(dc, LOGPIXELSY), 72);
+  ReleaseDC(nullptr, dc);
+  return CreateFontW(px, 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                     OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                     DEFAULT_PITCH | FF_SWISS, face);
 }
-
-HWND MakeControl(UiState* s, const wchar_t* klass, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id) {
-  HWND ctrl = CreateWindowExW(0, klass, text, style, x, y, w, h, s->hwnd,
+void SetFont(HWND h, HFONT f) { if (h && f) SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE); }
+HWND Make(State* s, const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id, HFONT f = nullptr, DWORD ex = 0) {
+  HWND ctrl = CreateWindowExW(ex, cls, text, style, x, y, w, h, s->hwnd,
                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
-  SetControlFont(ctrl, s->font);
+  SetFont(ctrl, f ? f : s->font);
   return ctrl;
 }
-
-HWND MakePageControl(UiState* s, int page, const wchar_t* klass, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id) {
-  HWND ctrl = MakeControl(s, klass, text, style, x, y, w, h, id);
-  if (ctrl && page >= 0 && page < kPageCount) s->pageControls[page].push_back(ctrl);
+HWND Add(State* s, int page, const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id, HFONT f = nullptr, DWORD ex = 0) {
+  HWND ctrl = Make(s, cls, text, style, x, y, w, h, id, f, ex);
+  if (page >= 0 && page < kPageCount) s->pages[page].push_back(ctrl);
   return ctrl;
 }
-
-HWND MakeLabel(UiState* s, int page, const wchar_t* text, int x, int y, int w, int h) {
-  return MakePageControl(s, page, L"STATIC", text, WS_CHILD | WS_VISIBLE, x, y, w, h, -1);
+HWND Label(State* s, int page, const wchar_t* text, int x, int y, int w, int h, HFONT f = nullptr) {
+  return Add(s, page, L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT, x, y, w, h, -1, f);
 }
 
-void ShowPage(UiState* s, int page) {
+std::wstring GetText(HWND h) {
+  if (!h) return L"";
+  int len = GetWindowTextLengthW(h);
+  std::wstring value(static_cast<size_t>(len) + 1, L'\0');
+  if (len) GetWindowTextW(h, value.data(), len + 1);
+  value.resize(static_cast<size_t>(len));
+  return value;
+}
+void ShowPage(State* s, int page) {
   if (!s || page < 0 || page >= kPageCount) return;
-  s->activePage = page;
-  for (int i = 0; i < kPageCount; ++i) {
-    for (HWND ctrl : s->pageControls[i]) ShowWindow(ctrl, i == page ? SW_SHOW : SW_HIDE);
-  }
+  s->page = page;
+  for (int i = 0; i < kPageCount; ++i) for (HWND h : s->pages[i]) ShowWindow(h, i == page ? SW_SHOW : SW_HIDE);
+  InvalidateRect(s->hwnd, nullptr, TRUE);
 }
-
-void AddTab(HWND tab, int index, const wchar_t* text) {
-  TCITEMW item{};
-  item.mask = TCIF_TEXT;
-  item.pszText = const_cast<LPWSTR>(text);
-  TabCtrl_InsertItem(tab, index, &item);
-}
-
 std::wstring FormatTime(std::int64_t ts) {
   if (ts <= 0) return L"";
   __time64_t raw = static_cast<__time64_t>(ts);
@@ -146,8 +155,7 @@ std::wstring FormatTime(std::int64_t ts) {
   wcsftime(buf, _countof(buf), L"%Y-%m-%d %H:%M", &local);
   return buf;
 }
-
-std::wstring OperationDisplay(OperationKind op) {
+std::wstring OpName(OperationKind op) {
   switch (op) {
     case OperationKind::Copy: return L"Copy";
     case OperationKind::Move: return L"Move";
@@ -155,749 +163,475 @@ std::wstring OperationDisplay(OperationKind op) {
     default: return L"Unknown";
   }
 }
-
-std::wstring CompactTextPreview(std::wstring text) {
-  for (auto& ch : text) {
-    if (ch == L'\r' || ch == L'\n' || ch == L'\t') ch = L' ';
-  }
-  while (text.find(L"  ") != std::wstring::npos) text.erase(text.find(L"  "), 1);
-  if (text.size() > 94) return text.substr(0, 91) + L"...";
-  return text;
-}
-
-std::wstring RepeatSuffix(int repeatCount) {
-  if (repeatCount <= 1) return L"";
-  return L"  x" + std::to_wstring(repeatCount);
-}
-
-std::wstring ClipboardEntryLine(const ClipboardHistoryEntry& entry) {
-  std::wstringstream ss;
-  ss << FormatTime(entry.timestamp) << L"  ";
-  if (entry.kind == ClipboardContentKind::Files) {
-    std::wstring state = entry.selected && !entry.stale ? L"[active] " : (entry.stale ? L"[history] " : L"[off] ");
-    ss << state << L"[" << OperationDisplay(entry.op) << L"] "
-       << entry.files.size() << L" file(s)" << RepeatSuffix(entry.repeatCount);
-    if (!entry.files.empty()) ss << L"  " << FormatMenuLabel(entry.files.front());
-  } else if (entry.kind == ClipboardContentKind::Text) {
-    ss << L"[Text] " << entry.text.size() << L" char(s)" << RepeatSuffix(entry.repeatCount)
-       << L"  " << CompactTextPreview(entry.text);
-  }
-  return ss.str();
-}
-
-std::wstring ClipboardEntryDetails(const ClipboardHistoryEntry& entry) {
-  std::wstringstream ss;
-  ss << L"State: " << (entry.selected && !entry.stale ? L"active" : (entry.stale ? L"history" : L"skip")) << L"\r\n";
-  ss << L"Action: " << OperationDisplay(entry.op) << L"\r\n";
-  ss << L"Repeated: " << std::max(1, entry.repeatCount) << L"\r\n";
-  ss << L"Last seen: " << FormatTime(entry.timestamp) << L"\r\n\r\n";
-  ss << L"Paths:\r\n";
-  for (const auto& file : entry.files) ss << L"  " << file << L"\r\n";
-  return ss.str();
-}
-
-std::wstring StatusText(const HistoryDatabase& db, const std::wstring& extra = L"") {
-  int selectedFileEntries = 0;
-  int selectedFiles = 0;
-  int staleFileEntries = 0;
-  int fileEvents = 0;
-  int textEntries = 0;
-  int textEvents = 0;
-  for (const auto& entry : db.clipboardEntries()) {
-    int repeats = std::max(1, entry.repeatCount);
-    if (entry.kind == ClipboardContentKind::Files) {
-      fileEvents += repeats;
-      if (entry.selected && !entry.stale) {
-        ++selectedFileEntries;
-        selectedFiles += static_cast<int>(entry.files.size());
-      } else if (entry.stale) {
-        ++staleFileEntries;
-      }
-    } else if (entry.kind == ClipboardContentKind::Text) {
-      ++textEntries;
-      textEvents += repeats;
-    }
-  }
-
-  std::wstringstream ss;
-  ss << L"Store: " << EncryptedRecordStore::DefaultStorePath() << L"\r\n";
-  ss << L"Menu cache: " << EncryptedRecordStore::DefaultMenuCachePath() << L"\r\n";
-  ss << L"Pinned targets: " << db.pinnedTargets().size() << L"    Operation records: " << db.operations().size() << L"\r\n";
-  ss << L"Active path queue: " << selectedFileEntries << L" entr" << (selectedFileEntries == 1 ? L"y" : L"ies")
-     << L", " << selectedFiles << L" path(s)    File clipboard events: " << fileEvents << L"\r\n";
-  ss << L"Path queue history: " << staleFileEntries << L" entr" << (staleFileEntries == 1 ? L"y" : L"ies") << L"\r\n";
-  ss << L"Text entries: " << textEntries << L"    Text clipboard events: " << textEvents << L"\r\n";
-  ss << L"Protection: DPAPI CurrentUser encrypted record store; Explorer menu cache stores only quick-target and queue-count metadata.";
-  if (!extra.empty()) ss << L"\r\n" << extra;
-  return ss.str();
-}
-
-std::wstring QueueSummaryText(const HistoryDatabase& db, const std::wstring& extra = L"") {
-  int activeEntries = 0;
-  int activeFiles = 0;
-  int copyFiles = 0;
-  int moveFiles = 0;
-  int historyEntries = 0;
-  int skippedEntries = 0;
-  int repeatedEvents = 0;
-  for (const auto& entry : db.clipboardEntries()) {
-    if (entry.kind != ClipboardContentKind::Files) continue;
-    repeatedEvents += std::max(1, entry.repeatCount);
-    if (entry.selected && !entry.stale) {
-      ++activeEntries;
-      activeFiles += static_cast<int>(entry.files.size());
-      if (entry.op == OperationKind::Move) moveFiles += static_cast<int>(entry.files.size());
-      else copyFiles += static_cast<int>(entry.files.size());
-    } else if (entry.stale) {
-      ++historyEntries;
-    } else {
-      ++skippedEntries;
-    }
-  }
-
-  std::wstringstream ss;
-  ss << L"Active: " << activeEntries << L" entr" << (activeEntries == 1 ? L"y" : L"ies")
-     << L" / " << activeFiles << L" path(s)    Copy: " << copyFiles
-     << L"    Move: " << moveFiles << L"    History: " << historyEntries
-     << L"    Skipped: " << skippedEntries << L"    Clipboard events: " << repeatedEvents;
-  if (!extra.empty()) ss << L"\r\n" << extra;
-  return ss.str();
-}
-
-void AddCandidateLines(HWND list, const HistoryDatabase& db, OperationKind op, const std::wstring& title) {
-  auto candidates = db.GetGlobalCandidates(op, 8);
-  if (candidates.empty()) return;
-  SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(title.c_str()));
-  for (const auto& c : candidates) {
-    std::wstring origin = c.pinned ? L"pinned" : L"detected";
-    std::wstring label = c.label.empty() ? FormatMenuLabel(c.destParent) : c.label;
-    std::wstring line = L"  [" + origin + L"]  " + label + L" -> " + c.destParent;
-    SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
-  }
-}
-
-void Refresh(UiState* s, const std::wstring& extra = L"") {
-  HistoryDatabase db;
-  std::wstring err;
-  db.Load(&err);
-  std::wstring message = !err.empty() && extra.empty() ? err : extra;
-  if (s->status) SetWindowTextW(s->status, StatusText(db, message).c_str());
-  if (s->queueSummary) SetWindowTextW(s->queueSummary, QueueSummaryText(db, message).c_str());
-
-  s->pinsData = db.pinnedTargets();
-  if (s->pins) {
-    SendMessageW(s->pins, LB_RESETCONTENT, 0, 0);
-    for (const auto& pin : s->pinsData) {
-      std::wstring line = L"[" + OperationDisplay(pin.op) + L"]  " +
-                          (pin.label.empty() ? FormatMenuLabel(pin.destParent) : pin.label) +
-                          L"  ->  " + pin.destParent;
-      SendMessageW(s->pins, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
-    }
-    if (s->pinsData.empty()) SendMessageW(s->pins, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No pinned quick targets yet."));
-  }
-
-  if (s->suggestions) {
-    SendMessageW(s->suggestions, LB_RESETCONTENT, 0, 0);
-    AddCandidateLines(s->suggestions, db, OperationKind::Move, L"ClipCue Move to...");
-    AddCandidateLines(s->suggestions, db, OperationKind::Copy, L"ClipCue Copy to...");
-    if (SendMessageW(s->suggestions, LB_GETCOUNT, 0, 0) == 0) {
-      SendMessageW(s->suggestions, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No detected quick targets yet."));
-    }
-  }
-
-  if (s->history) {
-    SendMessageW(s->history, LB_RESETCONTENT, 0, 0);
-    const auto& ops = db.operations();
-    int shown = 0;
-    for (auto it = ops.rbegin(); it != ops.rend() && shown < 120; ++it, ++shown) {
-      std::wstring line = FormatTime(it->timestamp) + L"  [" + OperationDisplay(it->op) + L"]  " +
-                          FormatMenuLabel(it->sourceParent) + L"  ->  " + FormatMenuLabel(it->destParent) +
-                          L"  (" + it->result + L")";
-      SendMessageW(s->history, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
-    }
-    if (shown == 0) SendMessageW(s->history, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No file operations recorded yet."));
-  }
-
-  s->fileEntriesData.clear();
-  s->textEntriesData.clear();
-  if (s->fileQueue) SendMessageW(s->fileQueue, LB_RESETCONTENT, 0, 0);
-  if (s->textHistory) SendMessageW(s->textHistory, LB_RESETCONTENT, 0, 0);
-  for (auto it = db.clipboardEntries().rbegin(); it != db.clipboardEntries().rend(); ++it) {
-    if (it->kind == ClipboardContentKind::Files) {
-      int index = static_cast<int>(s->fileEntriesData.size());
-      s->fileEntriesData.push_back(*it);
-      if (s->fileQueue) {
-        std::wstring line = ClipboardEntryLine(*it);
-        SendMessageW(s->fileQueue, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
-        SendMessageW(s->fileQueue, LB_SETSEL, (it->selected && !it->stale) ? TRUE : FALSE, index);
-      }
-    } else if (it->kind == ClipboardContentKind::Text) {
-      if (s->textEntriesData.size() >= 300) continue;
-      s->textEntriesData.push_back(*it);
-      if (s->textHistory) {
-        std::wstring line = ClipboardEntryLine(*it);
-        SendMessageW(s->textHistory, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
-      }
-    }
-  }
-  if (s->fileQueue && s->fileEntriesData.empty()) SendMessageW(s->fileQueue, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No path clipboard queue yet."));
-  if (s->textHistory && s->textEntriesData.empty()) SendMessageW(s->textHistory, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No text clipboard history yet."));
-}
-
-std::wstring PickFolder(HWND owner, const std::wstring& title) {
-  CoInitializeScope co;
-  if (FAILED(co.hr())) return L"";
-  IFileOpenDialog* dialog = nullptr;
-  HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
-  if (FAILED(hr)) return L"";
-  DWORD opts = 0;
-  dialog->GetOptions(&opts);
-  dialog->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
-  dialog->SetTitle(title.c_str());
-  std::wstring selected;
-  if (SUCCEEDED(dialog->Show(owner))) {
-    IShellItem* item = nullptr;
-    if (SUCCEEDED(dialog->GetResult(&item))) {
-      PWSTR raw = nullptr;
-      if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &raw)) && raw) {
-        selected = raw;
-        CoTaskMemFree(raw);
-      }
-      item->Release();
-    }
-  }
-  dialog->Release();
-  return selected;
-}
-
-OperationKind SelectedOp(HWND combo) {
+OperationKind ChosenOp(HWND combo) {
   int sel = static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0));
   if (sel == 1) return OperationKind::Move;
   if (sel == 2) return OperationKind::Copy;
   return OperationKind::Both;
 }
+std::wstring OneLine(std::wstring text) {
+  for (wchar_t& ch : text) if (ch == L'\r' || ch == L'\n' || ch == L'\t') ch = L' ';
+  while (text.find(L"  ") != std::wstring::npos) text.erase(text.find(L"  "), 1);
+  return text.size() > 90 ? text.substr(0, 87) + L"..." : text;
+}
+std::wstring ClipLine(const ClipboardHistoryEntry& e) {
+  std::wstringstream ss;
+  ss << FormatTime(e.timestamp) << L"  ";
+  if (e.kind == ClipboardContentKind::Files) {
+    ss << L"[" << (e.selected && !e.stale ? L"Active" : (e.stale ? L"History" : L"Skipped")) << L"] [" << OpName(e.op) << L"] " << e.files.size() << L" path(s)";
+    if (e.repeatCount > 1) ss << L" x" << e.repeatCount;
+    if (!e.files.empty()) ss << L"  " << FormatMenuLabel(e.files.front());
+  } else {
+    ss << L"[Text] " << e.text.size() << L" chars";
+    if (e.repeatCount > 1) ss << L" x" << e.repeatCount;
+    ss << L"  " << OneLine(e.text);
+  }
+  return ss.str();
+}
+std::wstring FileDetails(const ClipboardHistoryEntry& e) {
+  std::wstringstream ss;
+  ss << L"State: " << (e.selected && !e.stale ? L"active" : (e.stale ? L"history" : L"skipped")) << L"\r\n";
+  ss << L"Action: " << OpName(e.op) << L"\r\nRepeated: " << std::max(1, e.repeatCount) << L"\r\nLast seen: " << FormatTime(e.timestamp) << L"\r\n";
+  if (!e.sourceApp.empty()) ss << L"Source app: " << e.sourceApp << L"\r\n";
+  ss << L"\r\nPaths:\r\n";
+  for (const auto& f : e.files) ss << L"  " << f << L"\r\n";
+  return ss.str();
+}
+std::wstring DashText(const HistoryDatabase& db, const std::wstring& extra) {
+  int active = 0, files = 0, texts = 0;
+  for (const auto& e : db.clipboardEntries()) {
+    if (e.kind == ClipboardContentKind::Files && e.selected && !e.stale) { ++active; files += static_cast<int>(e.files.size()); }
+    if (e.kind == ClipboardContentKind::Text) ++texts;
+  }
+  std::wstringstream ss;
+  ss << L"Pinned " << db.pinnedTargets().size() << L"  |  Queue " << active << L" / " << files << L" paths  |  Text " << texts << L"  |  Records " << db.operations().size();
+  ss << L"\r\n" << (extra.empty() ? L"Select a target, tune the queue, clean text, and apply work from one control center." : extra);
+  return ss.str();
+}
+std::wstring StatusText(const HistoryDatabase& db, const std::wstring& extra) {
+  std::wstringstream ss;
+  ss << L"Store: " << EncryptedRecordStore::DefaultStorePath() << L"\r\n";
+  ss << L"Menu cache: " << EncryptedRecordStore::DefaultMenuCachePath() << L"\r\n";
+  ss << L"Pinned targets: " << db.pinnedTargets().size() << L"    Operations: " << db.operations().size() << L"\r\n";
+  ss << L"Clipboard records: " << db.clipboardEntries().size() << L"\r\n";
+  ss << L"Protection: DPAPI CurrentUser encrypted records; Explorer menu cache stores only fast-render metadata.";
+  if (!extra.empty()) ss << L"\r\n\r\nLatest action: " << extra;
+  return ss.str();
+}
+std::vector<int> Selections(HWND list) {
+  std::vector<int> rows;
+  int count = static_cast<int>(SendMessageW(list, LB_GETSELCOUNT, 0, 0));
+  if (count > 0) {
+    rows.resize(static_cast<size_t>(count));
+    SendMessageW(list, LB_GETSELITEMS, static_cast<WPARAM>(count), reinterpret_cast<LPARAM>(rows.data()));
+  } else {
+    int cur = static_cast<int>(SendMessageW(list, LB_GETCURSEL, 0, 0));
+    if (cur >= 0) rows.push_back(cur);
+  }
+  return rows;
+}
 
-HRESULT CallShellRegistration(bool reg) {
-  std::wstring dll = ShellDllPath();
-  HMODULE h = LoadLibraryW(dll.c_str());
-  if (!h) return HRESULT_FROM_WIN32(GetLastError());
+void AddSuggestions(State* s, HWND list, HistoryDatabase& db, OperationKind op, const wchar_t* title) {
+  auto candidates = db.GetGlobalCandidates(op, 8);
+  if (candidates.empty()) return;
+  SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(title));
+  s->suggestionTargets.push_back(L"");
+  for (const auto& c : candidates) {
+    std::wstring label = c.label.empty() ? FormatMenuLabel(c.destParent) : c.label;
+    std::wstring line = L"  [" + std::wstring(c.pinned ? L"Pinned" : L"Detected") + L"] " + label + L" -> " + c.destParent;
+    SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+    s->suggestionTargets.push_back(c.destParent);
+  }
+}
+void TextMeta(State* s) {
+  if (!s || !s->textEdit || !s->textMeta) return;
+  std::wstring text = GetText(s->textEdit);
+  size_t lines = text.empty() ? 0 : 1 + static_cast<size_t>(std::count(text.begin(), text.end(), L'\n'));
+  std::wstringstream ss;
+  ss << text.size() << L" characters";
+  if (!text.empty()) ss << L" across " << lines << L" line" << (lines == 1 ? L"" : L"s");
+  ss << L". Select clips to merge, normalize, copy, or paste.";
+  SetWindowTextW(s->textMeta, ss.str().c_str());
+}
+void Refresh(State* s, const std::wstring& extra = L"") {
+  HistoryDatabase db;
+  std::wstring err;
+  db.Load(&err);
+  std::wstring note = extra.empty() ? err : extra;
+  if (s->dash) SetWindowTextW(s->dash, DashText(db, note).c_str());
+  if (s->status) SetWindowTextW(s->status, StatusText(db, note).c_str());
+
+  s->pinsData = db.pinnedTargets();
+  if (s->pins) {
+    SendMessageW(s->pins, LB_RESETCONTENT, 0, 0);
+    for (const auto& pin : s->pinsData) {
+      std::wstring line = L"[" + OpName(pin.op) + L"] " + (pin.label.empty() ? FormatMenuLabel(pin.destParent) : pin.label) + L" -> " + pin.destParent;
+      SendMessageW(s->pins, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+    }
+    if (s->pinsData.empty()) SendMessageW(s->pins, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No pinned targets yet. Add a trusted folder."));
+  }
+
+  s->suggestionTargets.clear();
+  if (s->suggest) {
+    SendMessageW(s->suggest, LB_RESETCONTENT, 0, 0);
+    AddSuggestions(s, s->suggest, db, OperationKind::Move, L"Move suggestions");
+    AddSuggestions(s, s->suggest, db, OperationKind::Copy, L"Copy suggestions");
+    if (s->suggestionTargets.empty()) {
+      SendMessageW(s->suggest, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No suggestions yet. Use ClipCue from Explorer to teach routes."));
+      s->suggestionTargets.push_back(L"");
+    }
+  }
+
+  s->fileData.clear();
+  s->textData.clear();
+  if (s->queue) SendMessageW(s->queue, LB_RESETCONTENT, 0, 0);
+  if (s->textList) SendMessageW(s->textList, LB_RESETCONTENT, 0, 0);
+  for (auto it = db.clipboardEntries().rbegin(); it != db.clipboardEntries().rend(); ++it) {
+    if (it->kind == ClipboardContentKind::Files) {
+      int idx = static_cast<int>(s->fileData.size());
+      s->fileData.push_back(*it);
+      if (s->queue) {
+        std::wstring line = ClipLine(*it);
+        SendMessageW(s->queue, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+        SendMessageW(s->queue, LB_SETSEL, (it->selected && !it->stale) ? TRUE : FALSE, idx);
+      }
+    } else if (it->kind == ClipboardContentKind::Text && s->textData.size() < 300) {
+      s->textData.push_back(*it);
+      if (s->textList) {
+        std::wstring line = ClipLine(*it);
+        SendMessageW(s->textList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+      }
+    }
+  }
+  if (s->queue && s->fileData.empty()) SendMessageW(s->queue, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No path queue yet. Copy/cut files in Explorer while ClipCue Monitor runs."));
+  if (s->textList && s->textData.empty()) SendMessageW(s->textList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No text history yet. Copy text while ClipCue Monitor runs."));
+
+  if (s->history) {
+    SendMessageW(s->history, LB_RESETCONTENT, 0, 0);
+    int shown = 0;
+    for (auto it = db.operations().rbegin(); it != db.operations().rend() && shown < 120; ++it, ++shown) {
+      std::wstring line = FormatTime(it->timestamp) + L"  [" + OpName(it->op) + L"] " + FormatMenuLabel(it->sourceParent) + L" -> " + FormatMenuLabel(it->destParent) + L"  (" + it->result + L")";
+      SendMessageW(s->history, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+    }
+    if (!shown) SendMessageW(s->history, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"No operations recorded yet."));
+  }
+  TextMeta(s);
+}
+
+std::wstring PickFolder(HWND owner, const std::wstring& title, const std::wstring& initial = L"") {
+  CoInitializeScope co;
+  if (FAILED(co.hr())) return L"";
+  IFileOpenDialog* dlg = nullptr;
+  if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return L"";
+  DWORD opts = 0;
+  dlg->GetOptions(&opts);
+  dlg->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+  dlg->SetTitle(title.c_str());
+  if (!initial.empty()) {
+    IShellItem* item = nullptr;
+    if (SUCCEEDED(SHCreateItemFromParsingName(initial.c_str(), nullptr, IID_PPV_ARGS(&item)))) { dlg->SetFolder(item); item->Release(); }
+  }
+  std::wstring out;
+  if (SUCCEEDED(dlg->Show(owner))) {
+    IShellItem* item = nullptr;
+    if (SUCCEEDED(dlg->GetResult(&item))) {
+      PWSTR raw = nullptr;
+      if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &raw)) && raw) { out = raw; CoTaskMemFree(raw); }
+      item->Release();
+    }
+  }
+  dlg->Release();
+  return out;
+}
+std::wstring CurrentTarget(State* s) {
+  if (!s) return L"";
+  HWND focus = GetFocus();
+  if (s->suggest && focus == s->suggest) {
+    int sel = static_cast<int>(SendMessageW(s->suggest, LB_GETCURSEL, 0, 0));
+    if (sel >= 0 && static_cast<size_t>(sel) < s->suggestionTargets.size() && !s->suggestionTargets[static_cast<size_t>(sel)].empty()) return s->suggestionTargets[static_cast<size_t>(sel)];
+  }
+  if (s->pins) {
+    int pin = static_cast<int>(SendMessageW(s->pins, LB_GETCURSEL, 0, 0));
+    if (pin >= 0 && static_cast<size_t>(pin) < s->pinsData.size()) return s->pinsData[static_cast<size_t>(pin)].destParent;
+  }
+  if (s->suggest) {
+    int sug = static_cast<int>(SendMessageW(s->suggest, LB_GETCURSEL, 0, 0));
+    if (sug >= 0 && static_cast<size_t>(sug) < s->suggestionTargets.size() && !s->suggestionTargets[static_cast<size_t>(sug)].empty()) return s->suggestionTargets[static_cast<size_t>(sug)];
+  }
+  return GetText(s->target);
+}
+void AddPin(State* s) {
+  std::wstring folder = PickFolder(s->hwnd, L"Pin a ClipCue target folder", GetText(s->target));
+  if (folder.empty()) return;
+  HistoryDatabase db; std::wstring err; db.Load(&err);
+  PinnedTarget pin; pin.destParent = folder; pin.op = ChosenOp(s->op); pin.label = FormatMenuLabel(folder);
+  if (!db.AddPinnedTarget(pin, &err)) { MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR); return; }
+  db.WriteMenuCache(L"", nullptr);
+  SetWindowTextW(s->target, folder.c_str());
+  Refresh(s, L"Pinned target added and selected as the active queue target.");
+}
+void RemovePin(State* s) {
+  int sel = static_cast<int>(SendMessageW(s->pins, LB_GETCURSEL, 0, 0));
+  if (sel < 0 || static_cast<size_t>(sel) >= s->pinsData.size()) { MessageBoxW(s->hwnd, L"Select a pinned target first.", L"ClipCue", MB_ICONINFORMATION); return; }
+  HistoryDatabase db; std::wstring err; db.Load(&err);
+  if (!db.RemovePinnedTarget(static_cast<size_t>(sel), &err)) { MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR); return; }
+  db.WriteMenuCache(L"", nullptr); Refresh(s, L"Pinned target removed.");
+}
+void QueueUpdate(State* s, OperationKind op, bool selected, bool stale, const wchar_t* note) {
+  std::vector<int> rows = Selections(s->queue);
+  if (rows.empty()) { MessageBoxW(s->hwnd, L"Select one or more queue entries first.", L"ClipCue", MB_ICONINFORMATION); return; }
+  HistoryDatabase db; std::wstring err; db.Load(&err);
+  for (int row : rows) if (row >= 0 && static_cast<size_t>(row) < s->fileData.size()) {
+    ClipboardHistoryEntry e = s->fileData[static_cast<size_t>(row)];
+    e.selected = selected; e.stale = stale; if (op != OperationKind::Unknown) e.op = op;
+    if (!db.UpdateClipboardEntry(e, &err)) { MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR); return; }
+  }
+  db.WriteMenuCache(L"", nullptr); Refresh(s, note);
+}
+void ApplyQueue(State* s, const wchar_t* op) {
+  std::wstring target = GetText(s->target);
+  if (target.empty() || !DirectoryExists(target)) { MessageBoxW(s->hwnd, L"Choose an existing target folder first.", L"ClipCue", MB_ICONINFORMATION); return; }
+  std::wstring args = L"--paste-queue --target " + QuoteArg(target) + L" --op " + op;
+  ShellExecuteW(s->hwnd, L"open", AgentPath().c_str(), args.c_str(), ModuleDir().c_str(), SW_SHOWNORMAL);
+}
+void ArchiveQueue(State* s) {
+  HistoryDatabase db; std::wstring err; db.Load(&err);
+  if (!db.MarkSelectedFileClipboardEntriesStale(&err)) { MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR); return; }
+  db.WriteMenuCache(L"", nullptr); Refresh(s, L"Active path queue archived into history.");
+}
+void QueueDetails(State* s) {
+  auto rows = Selections(s->queue);
+  if (rows.size() == 1 && rows[0] >= 0 && static_cast<size_t>(rows[0]) < s->fileData.size()) SetWindowTextW(s->queueDetails, FileDetails(s->fileData[static_cast<size_t>(rows[0])]).c_str());
+  else SetWindowTextW(s->queueDetails, L"Select one queue entry to inspect its action, repeat count, source app, and full paths.");
+}
+std::wstring Normalize(std::wstring text) {
+  std::wstring out; bool space = false;
+  for (wchar_t ch : text) {
+    if (std::iswspace(ch)) { if (!space) out.push_back(L' '); space = true; }
+    else { out.push_back(ch); space = false; }
+  }
+  while (!out.empty() && out.front() == L' ') out.erase(out.begin());
+  while (!out.empty() && out.back() == L' ') out.pop_back();
+  return out;
+}
+bool PutClipboard(HWND owner, const std::wstring& text) {
+  if (!OpenClipboard(owner)) return false;
+  EmptyClipboard();
+  HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(wchar_t));
+  if (!h) { CloseClipboard(); return false; }
+  void* raw = GlobalLock(h);
+  if (!raw) { GlobalFree(h); CloseClipboard(); return false; }
+  std::memcpy(raw, text.c_str(), (text.size() + 1) * sizeof(wchar_t));
+  GlobalUnlock(h);
+  if (!SetClipboardData(CF_UNICODETEXT, h)) { GlobalFree(h); CloseClipboard(); return false; }
+  CloseClipboard(); return true;
+}
+void SendPaste() {
+  INPUT input[4]{};
+  input[0].type = INPUT_KEYBOARD; input[0].ki.wVk = VK_CONTROL;
+  input[1].type = INPUT_KEYBOARD; input[1].ki.wVk = 'V';
+  input[2].type = INPUT_KEYBOARD; input[2].ki.wVk = 'V'; input[2].ki.dwFlags = KEYEVENTF_KEYUP;
+  input[3].type = INPUT_KEYBOARD; input[3].ki.wVk = VK_CONTROL; input[3].ki.dwFlags = KEYEVENTF_KEYUP;
+  SendInput(4, input, sizeof(INPUT));
+}
+void MergeText(State* s) {
+  std::wstring combined;
+  for (int row : Selections(s->textList)) if (row >= 0 && static_cast<size_t>(row) < s->textData.size()) {
+    if (!combined.empty()) combined += L"\r\n\r\n";
+    combined += s->textData[static_cast<size_t>(row)].text;
+  }
+  if (!combined.empty()) SetWindowTextW(s->textEdit, combined.c_str());
+  TextMeta(s);
+}
+void CopyText(State* s, bool paste) {
+  std::wstring text = GetText(s->textEdit);
+  if (text.empty()) { MessageBoxW(s->hwnd, L"Select or enter text first.", L"ClipCue", MB_ICONINFORMATION); return; }
+  if (!PutClipboard(s->hwnd, text)) { MessageBoxW(s->hwnd, L"Unable to set clipboard text.", L"ClipCue", MB_ICONERROR); return; }
+  if (paste && s->previous && IsWindow(s->previous) && s->previous != s->hwnd) { SetForegroundWindow(s->previous); Sleep(120); SendPaste(); }
+  else Refresh(s, paste ? L"Edited text copied; switch to the destination app and paste." : L"Edited text copied to clipboard.");
+}
+void RegisterMenu(State* s, bool reg) {
+  HMODULE h = LoadLibraryW(ShellDllPath().c_str());
+  if (!h) { MessageBoxW(s->hwnd, (L"Unable to load shell DLL: " + GetLastErrorMessage()).c_str(), L"ClipCue", MB_ICONERROR); return; }
   using Fn = HRESULT(__stdcall*)();
   Fn fn = reinterpret_cast<Fn>(GetProcAddress(h, reg ? "DllRegisterServer" : "DllUnregisterServer"));
   HRESULT hr = fn ? fn() : HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
   FreeLibrary(h);
-  return hr;
+  if (FAILED(hr)) { MessageBoxW(s->hwnd, FormatHResult(hr).c_str(), L"ClipCue", MB_ICONERROR); return; }
+  Refresh(s, reg ? L"Explorer classic context menu registered." : L"Explorer classic context menu unregistered.");
 }
 
-void LaunchPath(const std::wstring& path) {
-  ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+void DrawCard(HDC dc, int x, int y, int w, int h) {
+  HBRUSH b = CreateSolidBrush(kCard); HPEN p = CreatePen(PS_SOLID, 1, kBorder);
+  HGDIOBJ ob = SelectObject(dc, b); HGDIOBJ op = SelectObject(dc, p);
+  RoundRect(dc, x, y, x + w, y + h, 14, 14);
+  SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(b); DeleteObject(p);
 }
-
-void OnAddPin(UiState* s) {
-  std::wstring folder = PickFolder(s->hwnd, L"Choose a ClipCue target folder");
-  if (folder.empty()) return;
-  HistoryDatabase db;
-  std::wstring err;
-  db.Load(&err);
-  PinnedTarget pin;
-  pin.op = SelectedOp(s->opCombo);
-  pin.destParent = folder;
-  pin.label = FormatMenuLabel(folder);
-  if (!db.AddPinnedTarget(pin, &err)) {
-    MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR);
-    return;
-  }
-  db.WriteMenuCache(L"", &err);
-  Refresh(s, L"Pinned target added and menu cache rebuilt.");
+void Paint(State* s, HDC dc) {
+  RECT rc{}; GetClientRect(s->hwnd, &rc);
+  HBRUSH bg = CreateSolidBrush(kBg); FillRect(dc, &rc, bg); DeleteObject(bg);
+  RECT head{0, 0, rc.right, 84}; HBRUSH hb = CreateSolidBrush(RGB(248, 250, 252)); FillRect(dc, &head, hb); DeleteObject(hb);
+  RECT line{0, 82, rc.right, 84}; HBRUSH ab = CreateSolidBrush(kAccent); FillRect(dc, &line, ab); DeleteObject(ab);
+  if (s->queueOnly) { DrawCard(dc, 22, 112, 580, 430); DrawCard(dc, 620, 112, 360, 430); DrawCard(dc, 22, 560, 958, 112); return; }
+  if (s->page == kPaths) { DrawCard(dc, 26, 120, 460, 190); DrawCard(dc, 500, 120, 474, 190); DrawCard(dc, 26, 326, 640, 268); DrawCard(dc, 682, 326, 292, 268); }
+  if (s->page == kText) { DrawCard(dc, 26, 120, 428, 472); DrawCard(dc, 470, 120, 504, 472); }
+  if (s->page == kStatus) { DrawCard(dc, 26, 120, 948, 214); DrawCard(dc, 26, 350, 948, 244); }
 }
-
-void OnRemovePin(UiState* s) {
-  int sel = static_cast<int>(SendMessageW(s->pins, LB_GETCURSEL, 0, 0));
-  if (sel < 0 || static_cast<std::size_t>(sel) >= s->pinsData.size()) {
-    MessageBoxW(s->hwnd, L"Select a pinned target first.", L"ClipCue", MB_ICONINFORMATION);
-    return;
-  }
-  if (MessageBoxW(s->hwnd, L"Remove the selected pinned target?", L"ClipCue", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
-  HistoryDatabase db;
-  std::wstring err;
-  db.Load(&err);
-  if (!db.RemovePinnedTarget(static_cast<std::size_t>(sel), &err)) {
-    MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR);
-    return;
-  }
-  db.WriteMenuCache(L"", &err);
-  Refresh(s, L"Pinned target removed and menu cache rebuilt.");
+void Header(State* s, const wchar_t* title, const wchar_t* subtitle) {
+  Make(s, L"STATIC", title, WS_CHILD | WS_VISIBLE, 24, 15, 330, 34, -1, s->titleFont);
+  Make(s, L"STATIC", subtitle, WS_CHILD | WS_VISIBLE, 26, 52, 720, 22, -1);
+  s->dash = Make(s, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 590, 16, 410, 58, IDC_DASH);
 }
+void CreateFull(State* s) {
+  Header(s, L"ClipCue", L"Professional control center for targets, file queues, Explorer integration, and clipboard text");
+  Make(s, L"BUTTON", L"Targets && Path Queue", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 24, 88, 168, 28, IDC_NAV_PATHS);
+  Make(s, L"BUTTON", L"Text Editor", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 202, 88, 118, 28, IDC_NAV_TEXT);
+  Make(s, L"BUTTON", L"System Status", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 330, 88, 128, 28, IDC_NAV_STATUS);
 
-void OnBuildCache(UiState* s) {
-  HistoryDatabase db;
-  std::wstring err;
-  db.Load(&err);
-  if (!db.WriteMenuCache(L"", &err)) {
-    MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR);
-    return;
-  }
-  Refresh(s, L"Menu cache rebuilt.");
+  Label(s, kPaths, L"Pinned quick targets", 44, 132, 220, 22, s->sectionFont);
+  Label(s, kPaths, L"Pin trusted destinations and choose whether they appear for copy, move, or both.", 44, 154, 410, 18);
+  s->pins = Add(s, kPaths, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL, 44, 178, 422, 76, IDC_PINS, nullptr, WS_EX_CLIENTEDGE);
+  Label(s, kPaths, L"New target", 44, 268, 80, 22);
+  s->op = Add(s, kPaths, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST, 128, 264, 132, 120, IDC_OP);
+  SendMessageW(s->op, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Copy + Move"));
+  SendMessageW(s->op, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Move only"));
+  SendMessageW(s->op, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Copy only"));
+  SendMessageW(s->op, CB_SETCURSEL, 0, 0);
+  Add(s, kPaths, L"BUTTON", L"Add...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 270, 262, 78, 28, IDC_ADD_PIN);
+  Add(s, kPaths, L"BUTTON", L"Remove", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 356, 262, 88, 28, IDC_REMOVE_PIN);
+  Add(s, kPaths, L"BUTTON", L"Use", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 44, 284, 68, 24, IDC_USE_TARGET);
+  Add(s, kPaths, L"BUTTON", L"Open", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 122, 284, 68, 24, IDC_OPEN_TARGET);
+
+  Label(s, kPaths, L"Smart suggestions", 518, 132, 220, 22, s->sectionFont);
+  Label(s, kPaths, L"Detected from previous ClipCue and Explorer work; double-click to set target.", 518, 154, 420, 18);
+  s->suggest = Add(s, kPaths, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL, 518, 178, 436, 98, IDC_SUGGEST, nullptr, WS_EX_CLIENTEDGE);
+  Add(s, kPaths, L"BUTTON", L"Use suggestion", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 518, 284, 120, 26, IDC_USE_TARGET);
+  Add(s, kPaths, L"BUTTON", L"Rebuild cache", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 648, 284, 124, 26, IDC_BUILD_CACHE);
+
+  Label(s, kPaths, L"Path clipboard queue", 44, 336, 250, 22, s->sectionFont);
+  Label(s, kPaths, L"Review copied/cut paths, tune copy vs. move, then replay the prepared batch.", 44, 358, 590, 18);
+  s->queue = Add(s, kPaths, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | LBS_EXTENDEDSEL | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL, 44, 384, 390, 134, IDC_QUEUE, nullptr, WS_EX_CLIENTEDGE);
+  s->queueDetails = Add(s, kPaths, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY | WS_VSCROLL, 446, 384, 202, 134, IDC_QUEUE_DETAILS, s->monoFont, WS_EX_CLIENTEDGE);
+  Add(s, kPaths, L"BUTTON", L"Set Copy", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 44, 532, 82, 28, IDC_QUEUE_COPY);
+  Add(s, kPaths, L"BUTTON", L"Set Move", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 134, 532, 82, 28, IDC_QUEUE_MOVE);
+  Add(s, kPaths, L"BUTTON", L"Skip", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 224, 532, 68, 28, IDC_QUEUE_SKIP);
+  Add(s, kPaths, L"BUTTON", L"Activate", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 300, 532, 82, 28, IDC_QUEUE_ACTIVE);
+  Add(s, kPaths, L"BUTTON", L"Archive active", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 390, 532, 112, 28, IDC_QUEUE_ARCHIVE);
+
+  Label(s, kPaths, L"Apply workflow", 702, 336, 210, 22, s->sectionFont);
+  Label(s, kPaths, L"Target folder", 702, 368, 180, 18);
+  s->target = Add(s, kPaths, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 702, 390, 198, 26, IDC_TARGET, nullptr, WS_EX_CLIENTEDGE);
+  Add(s, kPaths, L"BUTTON", L"...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 910, 388, 42, 30, IDC_PICK_TARGET);
+  Add(s, kPaths, L"BUTTON", L"Apply all", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 702, 432, 78, 30, IDC_APPLY_ALL);
+  Add(s, kPaths, L"BUTTON", L"Copy only", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 788, 432, 82, 30, IDC_APPLY_COPY);
+  Add(s, kPaths, L"BUTTON", L"Move only", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 702, 470, 82, 30, IDC_APPLY_MOVE);
+  Add(s, kPaths, L"BUTTON", L"Open target", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 792, 470, 96, 30, IDC_OPEN_TARGET);
+
+  Label(s, kText, L"Clipboard text history", 44, 132, 250, 22, s->sectionFont);
+  Label(s, kText, L"Select one or more clips; ClipCue merges them into the editor.", 44, 154, 380, 18);
+  s->textList = Add(s, kText, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | LBS_EXTENDEDSEL | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL, 44, 180, 390, 326, IDC_TEXT_LIST, nullptr, WS_EX_CLIENTEDGE);
+  Add(s, kText, L"BUTTON", L"Select all", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 44, 522, 92, 28, IDC_TEXT_ALL);
+  Add(s, kText, L"BUTTON", L"Clear editor", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 144, 522, 108, 28, IDC_TEXT_CLEAR);
+  Label(s, kText, L"Text editing lab", 488, 132, 250, 22, s->sectionFont);
+  Label(s, kText, L"Clean, combine, copy, or paste text back to the previous app.", 488, 154, 430, 18);
+  s->textEdit = Add(s, kText, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_WANTRETURN | WS_VSCROLL | ES_AUTOVSCROLL, 488, 180, 468, 326, IDC_TEXT_EDIT, s->monoFont, WS_EX_CLIENTEDGE);
+  s->textMeta = Add(s, kText, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 488, 514, 468, 32, IDC_TEXT_META);
+  Add(s, kText, L"BUTTON", L"Normalize spaces", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 488, 552, 132, 30, IDC_TEXT_NORMALIZE);
+  Add(s, kText, L"BUTTON", L"Copy edited text", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 630, 552, 136, 30, IDC_TEXT_COPY);
+  Add(s, kText, L"BUTTON", L"Paste to previous app", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 776, 552, 158, 30, IDC_TEXT_PASTE);
+
+  Label(s, kStatus, L"Monitor, store, and Explorer integration", 44, 132, 360, 22, s->sectionFont);
+  s->status = Add(s, kStatus, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY | WS_VSCROLL, 44, 166, 912, 142, IDC_STATUS, s->monoFont, WS_EX_CLIENTEDGE);
+  Label(s, kStatus, L"Recent operations", 44, 360, 250, 22, s->sectionFont);
+  s->history = Add(s, kStatus, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL, 44, 390, 912, 150, IDC_HISTORY, nullptr, WS_EX_CLIENTEDGE);
+  Add(s, kStatus, L"BUTTON", L"Register Explorer menu", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 44, 556, 168, 30, IDC_REGISTER);
+  Add(s, kStatus, L"BUTTON", L"Unregister menu", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 222, 556, 138, 30, IDC_UNREGISTER);
+  Add(s, kStatus, L"BUTTON", L"Cleanup", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 370, 556, 92, 30, IDC_CLEANUP);
+
+  Make(s, L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 24, 696, 88, 30, IDC_REFRESH);
+  Make(s, L"BUTTON", L"Open data", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 122, 696, 98, 30, IDC_OPEN_DATA);
+  Make(s, L"BUTTON", L"Installer", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 230, 696, 92, 30, IDC_INSTALLER);
+  Make(s, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 900, 696, 92, 30, IDC_CLOSE);
 }
-
-void OnCleanup(UiState* s) {
-  HistoryDatabase db;
-  std::wstring err;
-  db.Load(&err);
-  if (!db.CleanupExpired(90, 365, &err)) {
-    MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR);
-    return;
-  }
-  db.Load(nullptr);
-  db.WriteMenuCache(L"", nullptr);
-  Refresh(s, L"Expired operation records cleaned. Pinned targets were kept.");
+void CreateQueueOnly(State* s) {
+  Header(s, L"Path Clip Queue", L"Focused workspace for replaying multiple copied or cut Explorer paths into a target folder");
+  Label(s, kPaths, L"Queue entries", 42, 128, 200, 22, s->sectionFont);
+  s->queue = Add(s, kPaths, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | LBS_EXTENDEDSEL | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL, 42, 158, 540, 326, IDC_QUEUE, nullptr, WS_EX_CLIENTEDGE);
+  Label(s, kPaths, L"Details", 638, 128, 200, 22, s->sectionFont);
+  s->queueDetails = Add(s, kPaths, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY | WS_VSCROLL, 638, 158, 320, 326, IDC_QUEUE_DETAILS, s->monoFont, WS_EX_CLIENTEDGE);
+  Add(s, kPaths, L"BUTTON", L"Set Copy", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 42, 504, 92, 32, IDC_QUEUE_COPY);
+  Add(s, kPaths, L"BUTTON", L"Set Move", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 146, 504, 92, 32, IDC_QUEUE_MOVE);
+  Add(s, kPaths, L"BUTTON", L"Skip", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 250, 504, 76, 32, IDC_QUEUE_SKIP);
+  Add(s, kPaths, L"BUTTON", L"Activate", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 338, 504, 92, 32, IDC_QUEUE_ACTIVE);
+  Add(s, kPaths, L"BUTTON", L"Archive active", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 638, 504, 130, 32, IDC_QUEUE_ARCHIVE);
+  Add(s, kPaths, L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 780, 504, 92, 32, IDC_REFRESH);
+  Label(s, kPaths, L"Target folder", 42, 584, 120, 22, s->sectionFont);
+  s->target = Add(s, kPaths, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 42, 612, 540, 28, IDC_TARGET, nullptr, WS_EX_CLIENTEDGE);
+  Add(s, kPaths, L"BUTTON", L"Choose...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 596, 610, 102, 32, IDC_PICK_TARGET);
+  Add(s, kPaths, L"BUTTON", L"Apply all", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 718, 610, 92, 32, IDC_APPLY_ALL);
+  Add(s, kPaths, L"BUTTON", L"Copy only", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 820, 610, 92, 32, IDC_APPLY_COPY);
+  Add(s, kPaths, L"BUTTON", L"Move only", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 718, 650, 92, 32, IDC_APPLY_MOVE);
+  Add(s, kPaths, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 820, 650, 92, 32, IDC_CLOSE);
 }
-
-std::vector<int> SelectedListIndices(HWND list) {
-  std::vector<int> indices;
-  int count = static_cast<int>(SendMessageW(list, LB_GETSELCOUNT, 0, 0));
-  if (count <= 0) {
-    int sel = static_cast<int>(SendMessageW(list, LB_GETCURSEL, 0, 0));
-    if (sel >= 0) indices.push_back(sel);
-    return indices;
-  }
-  indices.resize(static_cast<std::size_t>(count));
-  SendMessageW(list, LB_GETSELITEMS, static_cast<WPARAM>(count), reinterpret_cast<LPARAM>(indices.data()));
-  return indices;
-}
-
-void OnSaveFileQueueSelection(UiState* s) {
-  HistoryDatabase db;
-  std::wstring err;
-  db.Load(&err);
-
-  std::vector<std::wstring> allFileIds;
-  for (const auto& entry : s->fileEntriesData) allFileIds.push_back(entry.id);
-  db.SetClipboardEntriesSelected(allFileIds, false, &err);
-
-  std::vector<std::wstring> selectedIds;
-  for (int index : SelectedListIndices(s->fileQueue)) {
-    if (index >= 0 && static_cast<std::size_t>(index) < s->fileEntriesData.size()) {
-      selectedIds.push_back(s->fileEntriesData[static_cast<std::size_t>(index)].id);
-    }
-  }
-  db.SetClipboardEntriesSelected(selectedIds, true, &err);
-  db.Load(nullptr);
-  db.WriteMenuCache(L"", nullptr);
-  Refresh(s, L"Path clipboard queue selection saved.");
-}
-
-void OnQueueSelectionChanged(UiState* s) {
-  auto selected = SelectedListIndices(s->fileQueue);
-  if (selected.size() != 1 || selected[0] < 0 || static_cast<std::size_t>(selected[0]) >= s->fileEntriesData.size()) {
-    SetWindowTextW(s->fileQueueDetails, L"Select one queue entry to inspect or edit it.");
-    return;
-  }
-  const auto& entry = s->fileEntriesData[static_cast<std::size_t>(selected[0])];
-  SetWindowTextW(s->fileQueueDetails, ClipboardEntryDetails(entry).c_str());
-}
-
-void UpdateSelectedQueueEntries(UiState* s, OperationKind op, bool active, bool stale, const std::wstring& message) {
-  auto selected = SelectedListIndices(s->fileQueue);
-  if (selected.empty()) {
-    MessageBoxW(s->hwnd, L"Select one or more queue entries first.", L"ClipCue", MB_ICONINFORMATION);
-    return;
-  }
-
-  HistoryDatabase db;
-  std::wstring err;
-  db.Load(&err);
-  bool changed = false;
-  for (int index : selected) {
-    if (index < 0 || static_cast<std::size_t>(index) >= s->fileEntriesData.size()) continue;
-    ClipboardHistoryEntry entry = s->fileEntriesData[static_cast<std::size_t>(index)];
-    entry.selected = active;
-    entry.stale = stale;
-    if (op != OperationKind::Unknown) entry.op = op;
-    if (!db.UpdateClipboardEntry(entry, &err)) {
-      MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR);
-      return;
-    }
-    changed = true;
-  }
-
-  if (changed) {
-    db.Load(nullptr);
-    db.WriteMenuCache(L"", nullptr);
-    Refresh(s, message);
-  }
-}
-
-void OnQueueCopy(UiState* s) {
-  UpdateSelectedQueueEntries(s, OperationKind::Copy, true, false, L"Selected queue entr" L"ies set to Copy.");
-}
-
-void OnQueueMove(UiState* s) {
-  UpdateSelectedQueueEntries(s, OperationKind::Move, true, false, L"Selected queue entr" L"ies set to Move.");
-}
-
-void OnQueueSkip(UiState* s) {
-  UpdateSelectedQueueEntries(s, OperationKind::Unknown, false, false, L"Selected queue entr" L"ies set to Skip.");
-}
-
-void OnQueueActivate(UiState* s) {
-  UpdateSelectedQueueEntries(s, OperationKind::Unknown, true, false, L"Selected queue entr" L"ies activated.");
-}
-
-void OnClearFileQueue(UiState* s) {
-  HistoryDatabase db;
-  std::wstring err;
-  db.Load(&err);
-  if (!db.MarkSelectedFileClipboardEntriesStale(&err)) {
-    MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR);
-    return;
-  }
-  db.Load(nullptr);
-  db.WriteMenuCache(L"", nullptr);
-  Refresh(s, L"Active path clipboard queue moved to history.");
-}
-
-std::wstring GetWindowTextString(HWND hwnd);
-
-std::wstring QueueTargetText(UiState* s) {
-  return s && s->queueTarget ? GetWindowTextString(s->queueTarget) : L"";
-}
-
-void OnPickQueueTarget(UiState* s) {
-  std::wstring folder = PickFolder(s->hwnd, L"Choose a target folder");
-  if (!folder.empty() && s->queueTarget) SetWindowTextW(s->queueTarget, folder.c_str());
-}
-
-void OnOpenControlPanel(UiState* s) {
-  std::wstring ui = GetProgramPath();
-  ShellExecuteW(s ? s->hwnd : nullptr, L"open", ui.c_str(), nullptr, ModuleDir().c_str(), SW_SHOWNORMAL);
-}
-
-void OnApplyQueue(UiState* s, const std::wstring& op) {
-  std::wstring target = QueueTargetText(s);
-  if (target.empty() || !DirectoryExists(target)) {
-    MessageBoxW(s->hwnd, L"Choose an existing target folder first.", L"ClipCue", MB_ICONINFORMATION);
-    return;
-  }
-
-  std::wstring params = L"--paste-queue --target " + QuoteArg(target);
-  if (!op.empty()) params += L" --op " + op;
-  SHELLEXECUTEINFOW sei{};
-  sei.cbSize = sizeof(sei);
-  std::wstring agent = AgentPath();
-  sei.lpFile = agent.c_str();
-  sei.lpParameters = params.c_str();
-  sei.nShow = SW_SHOWNORMAL;
-  if (!ShellExecuteExW(&sei)) {
-    std::wstring msg = L"Unable to open ClipCue.Agent.exe: " + GetLastErrorMessage();
-    MessageBoxW(s->hwnd, msg.c_str(), L"ClipCue", MB_ICONERROR);
-  }
-}
-
-std::wstring GetWindowTextString(HWND hwnd) {
-  int len = GetWindowTextLengthW(hwnd);
-  std::wstring text(static_cast<std::size_t>(len) + 1, L'\0');
-  if (len > 0) GetWindowTextW(hwnd, text.data(), len + 1);
-  text.resize(static_cast<std::size_t>(len));
-  return text;
-}
-
-bool SetClipboardUnicodeText(HWND owner, const std::wstring& text, std::wstring* error = nullptr) {
-  if (!OpenClipboard(owner)) {
-    if (error) *error = L"Unable to open clipboard: " + GetLastErrorMessage();
-    return false;
-  }
-  EmptyClipboard();
-  SIZE_T bytes = (text.size() + 1) * sizeof(wchar_t);
-  HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
-  if (!memory) {
-    CloseClipboard();
-    if (error) *error = L"Unable to allocate clipboard memory.";
-    return false;
-  }
-  void* raw = GlobalLock(memory);
-  if (!raw) {
-    GlobalFree(memory);
-    CloseClipboard();
-    if (error) *error = L"Unable to lock clipboard memory.";
-    return false;
-  }
-  std::memcpy(raw, text.c_str(), bytes);
-  GlobalUnlock(memory);
-  if (!SetClipboardData(CF_UNICODETEXT, memory)) {
-    GlobalFree(memory);
-    CloseClipboard();
-    if (error) *error = L"Unable to set clipboard text: " + GetLastErrorMessage();
-    return false;
-  }
-  CloseClipboard();
-  return true;
-}
-
-void SendCtrlV() {
-  INPUT input[4]{};
-  input[0].type = INPUT_KEYBOARD;
-  input[0].ki.wVk = VK_CONTROL;
-  input[1].type = INPUT_KEYBOARD;
-  input[1].ki.wVk = 'V';
-  input[2].type = INPUT_KEYBOARD;
-  input[2].ki.wVk = 'V';
-  input[2].ki.dwFlags = KEYEVENTF_KEYUP;
-  input[3].type = INPUT_KEYBOARD;
-  input[3].ki.wVk = VK_CONTROL;
-  input[3].ki.dwFlags = KEYEVENTF_KEYUP;
-  SendInput(4, input, sizeof(INPUT));
-}
-
-void OnTextSelectionChanged(UiState* s) {
-  std::wstring combined;
-  for (int index : SelectedListIndices(s->textHistory)) {
-    if (index < 0 || static_cast<std::size_t>(index) >= s->textEntriesData.size()) continue;
-    if (!combined.empty()) combined += L"\r\n";
-    combined += s->textEntriesData[static_cast<std::size_t>(index)].text;
-  }
-  if (!combined.empty()) SetWindowTextW(s->textEditor, combined.c_str());
-}
-
-void OnCopyEditedText(UiState* s, bool paste) {
-  std::wstring text = GetWindowTextString(s->textEditor);
-  if (text.empty()) {
-    MessageBoxW(s->hwnd, L"Select or enter text first.", L"ClipCue", MB_ICONINFORMATION);
-    return;
-  }
-  std::wstring err;
-  if (!SetClipboardUnicodeText(s->hwnd, text, &err)) {
-    MessageBoxW(s->hwnd, err.c_str(), L"ClipCue", MB_ICONERROR);
-    return;
-  }
-
-  if (paste && s->previousForeground && IsWindow(s->previousForeground) && s->previousForeground != s->hwnd) {
-    SetForegroundWindow(s->previousForeground);
-    Sleep(120);
-    SendCtrlV();
-  } else if (paste) {
-    MessageBoxW(s->hwnd, L"Edited text copied. Switch to the target app and paste.", L"ClipCue", MB_ICONINFORMATION);
-  } else {
-    Refresh(s, L"Edited text copied to the clipboard.");
-  }
-}
-
-void OnRegisterMenu(UiState* s, bool reg) {
-  HRESULT hr = CallShellRegistration(reg);
-  if (FAILED(hr)) {
-    std::wstring msg = (reg ? L"Register failed: " : L"Unregister failed: ") + FormatHResult(hr) + L"\r\nDLL: " + ShellDllPath();
-    MessageBoxW(s->hwnd, msg.c_str(), L"ClipCue", MB_ICONERROR);
-    return;
-  }
-  Refresh(s, reg ? L"Classic Explorer context menu registered for the current user." : L"Classic Explorer context menu unregistered for the current user.");
-}
-
-void OnCreate(UiState* s) {
-  s->background = CreateSolidBrush(RGB(245, 247, 250));
-  s->font = CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-  s->titleFont = CreateFontW(-22, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                             DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-
-  HWND title = MakeControl(s, L"STATIC", L"ClipCue", WS_CHILD | WS_VISIBLE, 14, 10, 220, 28, -1);
-  SetControlFont(title, s->titleFont);
-  MakeControl(s, L"STATIC", L"Clipboard paths and text, organized for repeated work", WS_CHILD | WS_VISIBLE, 236, 16, 420, 20, -1);
-
-  s->tab = MakeControl(s, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, 14, 44, 850, 622, IDC_TAB);
-  AddTab(s->tab, kPagePaths, L"Paths");
-  AddTab(s->tab, kPageText, L"Text");
-  AddTab(s->tab, kPageStatus, L"Status");
-  TabCtrl_SetCurSel(s->tab, kPagePaths);
-
-  MakeLabel(s, kPagePaths, L"Pinned quick targets", 30, 86, 260, 20);
-  s->pins = MakePageControl(s, kPagePaths, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL,
-                            30, 110, 812, 96, IDC_PINS);
-
-  MakeLabel(s, kPagePaths, L"New target operation", 30, 222, 140, 22);
-  s->opCombo = MakePageControl(s, kPagePaths, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
-                               174, 218, 160, 160, IDC_OP_COMBO);
-  SendMessageW(s->opCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Copy + Move"));
-  SendMessageW(s->opCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Move only"));
-  SendMessageW(s->opCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Copy only"));
-  SendMessageW(s->opCombo, CB_SETCURSEL, 0, 0);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"Add target...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 350, 216, 112, 28, IDC_ADD_PIN);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"Remove selected", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 470, 216, 132, 28, IDC_REMOVE_PIN);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"Rebuild cache", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 610, 216, 112, 28, IDC_BUILD_CACHE);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"Cleanup", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 730, 216, 112, 28, IDC_CLEANUP);
-
-  MakeLabel(s, kPagePaths, L"Detected quick targets", 30, 262, 260, 20);
-  s->suggestions = MakePageControl(s, kPagePaths, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL,
-                                   30, 286, 812, 118, IDC_SUGGESTIONS);
-
-  MakeLabel(s, kPagePaths, L"Path clipboard queue", 30, 424, 260, 20);
-  s->fileQueue = MakePageControl(s, kPagePaths, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_EXTENDEDSEL | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL,
-                                 30, 448, 512, 118, IDC_CLIPBOARD_FILES);
-  s->fileQueueDetails = MakePageControl(s, kPagePaths, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
-                                        556, 448, 286, 118, IDC_QUEUE_DETAILS);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"\u21B7 Copy", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 30, 578, 92, 30, IDC_QUEUE_COPY);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"\u21E2 Move", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 132, 578, 92, 30, IDC_QUEUE_MOVE);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"\u2298 Skip", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 234, 578, 92, 30, IDC_QUEUE_SKIP);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"\u21BB Activate", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 336, 578, 112, 30, IDC_QUEUE_ACTIVATE);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"Save selection", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 464, 578, 128, 30, IDC_SAVE_FILE_QUEUE);
-  MakePageControl(s, kPagePaths, L"BUTTON", L"Mark active as history", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 604, 578, 170, 30, IDC_CLEAR_FILE_QUEUE);
-
-  MakeLabel(s, kPageText, L"Text clipboard history", 30, 86, 300, 20);
-  s->textHistory = MakePageControl(s, kPageText, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_EXTENDEDSEL | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL,
-                                   30, 110, 386, 456, IDC_CLIPBOARD_TEXTS);
-  MakeLabel(s, kPageText, L"Edited combined text", 436, 86, 300, 20);
-  s->textEditor = MakePageControl(s, kPageText, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | WS_VSCROLL | ES_AUTOVSCROLL,
-                                  436, 110, 406, 456, IDC_TEXT_EDITOR);
-  MakePageControl(s, kPageText, L"BUTTON", L"Copy edited text", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 436, 578, 142, 30, IDC_COPY_TEXT);
-  MakePageControl(s, kPageText, L"BUTTON", L"Paste edited text", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 588, 578, 142, 30, IDC_PASTE_TEXT);
-
-  MakeLabel(s, kPageStatus, L"Monitor and store status", 30, 86, 300, 20);
-  s->status = MakePageControl(s, kPageStatus, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
-                              30, 110, 812, 158, IDC_STATUS);
-  MakeLabel(s, kPageStatus, L"Recent ClipCue operations", 30, 290, 300, 20);
-  s->history = MakePageControl(s, kPageStatus, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL,
-                               30, 314, 812, 252, IDC_HISTORY);
-
-  MakeControl(s, L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 14, 682, 94, 30, IDC_REFRESH);
-  MakeControl(s, L"BUTTON", L"Open data folder", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 118, 682, 130, 30, IDC_OPEN_DATA);
-  MakeControl(s, L"BUTTON", L"Register menu", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 258, 682, 118, 30, IDC_REGISTER_MENU);
-  MakeControl(s, L"BUTTON", L"Unregister menu", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 386, 682, 128, 30, IDC_UNREGISTER_MENU);
-  MakeControl(s, L"BUTTON", L"Open installer", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 524, 682, 122, 30, IDC_OPEN_INSTALLER);
-  MakeControl(s, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 770, 682, 94, 30, IDC_CLOSE);
-
-  Refresh(s);
-  SetWindowTextW(s->fileQueueDetails, L"Select one queue entry to inspect or edit it.");
-  ShowPage(s, kPagePaths);
-}
-
-void OnCreateQueue(UiState* s) {
-  s->background = CreateSolidBrush(RGB(241, 244, 248));
-  s->font = CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-  s->titleFont = CreateFontW(-26, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                             DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-
-  HWND title = MakeControl(s, L"STATIC", L"Path Clip Queue", WS_CHILD | WS_VISIBLE, 24, 18, 280, 34, -1);
-  SetControlFont(title, s->titleFont);
-  MakeControl(s, L"STATIC", L"ClipCue", WS_CHILD | WS_VISIBLE, 316, 28, 120, 22, -1);
-
-  s->queueSummary = MakeControl(s, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 24, 66, 920, 42, IDC_QUEUE_SUMMARY);
-  MakeControl(s, L"STATIC", L"Queue", WS_CHILD | WS_VISIBLE, 24, 124, 120, 22, -1);
-  MakeControl(s, L"STATIC", L"Details", WS_CHILD | WS_VISIBLE, 604, 124, 120, 22, -1);
-
-  s->fileQueue = MakeControl(s, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_EXTENDEDSEL | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL,
-                             24, 150, 558, 384, IDC_CLIPBOARD_FILES);
-  s->fileQueueDetails = MakeControl(s, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
-                                    604, 150, 340, 384, IDC_QUEUE_DETAILS);
-
-  MakeControl(s, L"BUTTON", L"\u21B7 Copy", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 24, 550, 104, 34, IDC_QUEUE_COPY);
-  MakeControl(s, L"BUTTON", L"\u21E2 Move", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 140, 550, 104, 34, IDC_QUEUE_MOVE);
-  MakeControl(s, L"BUTTON", L"\u2298 Skip", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 256, 550, 104, 34, IDC_QUEUE_SKIP);
-  MakeControl(s, L"BUTTON", L"\u21BB Activate", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 372, 550, 128, 34, IDC_QUEUE_ACTIVATE);
-  MakeControl(s, L"BUTTON", L"Mark active as history", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 604, 550, 176, 34, IDC_CLEAR_FILE_QUEUE);
-  MakeControl(s, L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 792, 550, 104, 34, IDC_REFRESH);
-
-  MakeControl(s, L"STATIC", L"Target folder", WS_CHILD | WS_VISIBLE, 24, 606, 120, 22, -1);
-  s->queueTarget = MakeControl(s, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-                               140, 602, 442, 28, IDC_QUEUE_TARGET);
-  MakeControl(s, L"BUTTON", L"Choose...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 594, 600, 104, 32, IDC_QUEUE_PICK_TARGET);
-  MakeControl(s, L"BUTTON", L"Apply all...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 710, 600, 104, 32, IDC_QUEUE_APPLY_ALL);
-  MakeControl(s, L"BUTTON", L"Copy only...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 824, 600, 104, 32, IDC_QUEUE_APPLY_COPY);
-  MakeControl(s, L"BUTTON", L"Move only...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 710, 642, 104, 32, IDC_QUEUE_APPLY_MOVE);
-  MakeControl(s, L"BUTTON", L"Control Panel", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 824, 642, 104, 32, IDC_OPEN_PANEL);
-  MakeControl(s, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 24, 642, 104, 32, IDC_CLOSE);
-
-  Refresh(s);
-  SetWindowTextW(s->fileQueueDetails, L"Select one queue entry to inspect or edit it.");
+void Create(State* s) {
+  s->white = CreateSolidBrush(RGB(255, 255, 255));
+  s->font = MakeFont(9); s->titleFont = MakeFont(s->queueOnly ? 21 : 20, FW_SEMIBOLD); s->sectionFont = MakeFont(11, FW_SEMIBOLD); s->monoFont = MakeFont(9, FW_NORMAL, L"Consolas");
+  if (s->queueOnly) CreateQueueOnly(s); else CreateFull(s);
+  Refresh(s); QueueDetails(s); ShowPage(s, kPaths);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-  UiState* s = reinterpret_cast<UiState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+  State* s = reinterpret_cast<State*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
   switch (msg) {
-    case WM_NCCREATE: {
-      auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp);
-      s = reinterpret_cast<UiState*>(cs->lpCreateParams);
-      s->hwnd = hwnd;
-      SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(s));
-      return TRUE;
-    }
-    case WM_CREATE:
-      if (s && s->queueMode) OnCreateQueue(s);
-      else OnCreate(s);
-      return 0;
-    case WM_NOTIFY: {
-      auto* hdr = reinterpret_cast<NMHDR*>(lp);
-      if (hdr && s && s->tab && hdr->idFrom == IDC_TAB && hdr->code == TCN_SELCHANGE) {
-        ShowPage(s, TabCtrl_GetCurSel(s->tab));
-        return 0;
-      }
-      break;
-    }
+    case WM_NCCREATE: { auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp); s = reinterpret_cast<State*>(cs->lpCreateParams); s->hwnd = hwnd; SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(s)); return TRUE; }
+    case WM_CREATE: Create(s); return 0;
     case WM_COMMAND: {
-      int id = LOWORD(wp);
-      int notify = HIWORD(wp);
-      if (id == IDC_CLIPBOARD_TEXTS && notify == LBN_SELCHANGE) {
-        OnTextSelectionChanged(s);
-        return 0;
-      }
-      if (id == IDC_CLIPBOARD_FILES && notify == LBN_SELCHANGE) {
-        OnQueueSelectionChanged(s);
-        return 0;
-      }
+      int id = LOWORD(wp), notify = HIWORD(wp);
+      if (id == IDC_QUEUE && notify == LBN_SELCHANGE) { QueueDetails(s); return 0; }
+      if (id == IDC_TEXT_LIST && notify == LBN_SELCHANGE) { MergeText(s); return 0; }
+      if ((id == IDC_PINS || id == IDC_SUGGEST) && notify == LBN_DBLCLK) { std::wstring target = CurrentTarget(s); if (!target.empty()) SetWindowTextW(s->target, target.c_str()); return 0; }
+      if (id == IDC_TEXT_EDIT && notify == EN_CHANGE) { TextMeta(s); return 0; }
       switch (id) {
-        case IDC_ADD_PIN: OnAddPin(s); return 0;
-        case IDC_REMOVE_PIN: OnRemovePin(s); return 0;
-        case IDC_BUILD_CACHE: OnBuildCache(s); return 0;
-        case IDC_CLEANUP: OnCleanup(s); return 0;
-        case IDC_SAVE_FILE_QUEUE: OnSaveFileQueueSelection(s); return 0;
-        case IDC_CLEAR_FILE_QUEUE: OnClearFileQueue(s); return 0;
-        case IDC_QUEUE_COPY: OnQueueCopy(s); return 0;
-        case IDC_QUEUE_MOVE: OnQueueMove(s); return 0;
-        case IDC_QUEUE_SKIP: OnQueueSkip(s); return 0;
-        case IDC_QUEUE_ACTIVATE: OnQueueActivate(s); return 0;
-        case IDC_QUEUE_PICK_TARGET: OnPickQueueTarget(s); return 0;
-        case IDC_QUEUE_APPLY_ALL: OnApplyQueue(s, L"both"); return 0;
-        case IDC_QUEUE_APPLY_COPY: OnApplyQueue(s, L"copy"); return 0;
-        case IDC_QUEUE_APPLY_MOVE: OnApplyQueue(s, L"move"); return 0;
-        case IDC_OPEN_PANEL: OnOpenControlPanel(s); return 0;
-        case IDC_COPY_TEXT: OnCopyEditedText(s, false); return 0;
-        case IDC_PASTE_TEXT: OnCopyEditedText(s, true); return 0;
+        case IDC_NAV_PATHS: ShowPage(s, kPaths); return 0;
+        case IDC_NAV_TEXT: ShowPage(s, kText); return 0;
+        case IDC_NAV_STATUS: ShowPage(s, kStatus); return 0;
+        case IDC_ADD_PIN: AddPin(s); return 0;
+        case IDC_REMOVE_PIN: RemovePin(s); return 0;
+        case IDC_USE_TARGET: { std::wstring target = CurrentTarget(s); if (!target.empty()) SetWindowTextW(s->target, target.c_str()); return 0; }
+        case IDC_OPEN_TARGET: { std::wstring target = CurrentTarget(s); if (!target.empty()) ShellExecuteW(hwnd, L"open", target.c_str(), nullptr, nullptr, SW_SHOWNORMAL); return 0; }
+        case IDC_PICK_TARGET: { std::wstring target = PickFolder(hwnd, L"Choose target folder", GetText(s->target)); if (!target.empty()) SetWindowTextW(s->target, target.c_str()); return 0; }
+        case IDC_QUEUE_COPY: QueueUpdate(s, OperationKind::Copy, true, false, L"Selected queue entries set to Copy."); return 0;
+        case IDC_QUEUE_MOVE: QueueUpdate(s, OperationKind::Move, true, false, L"Selected queue entries set to Move."); return 0;
+        case IDC_QUEUE_SKIP: QueueUpdate(s, OperationKind::Unknown, false, false, L"Selected queue entries skipped."); return 0;
+        case IDC_QUEUE_ACTIVE: QueueUpdate(s, OperationKind::Unknown, true, false, L"Selected queue entries activated."); return 0;
+        case IDC_QUEUE_ARCHIVE: ArchiveQueue(s); return 0;
+        case IDC_APPLY_ALL: ApplyQueue(s, L"both"); return 0;
+        case IDC_APPLY_COPY: ApplyQueue(s, L"copy"); return 0;
+        case IDC_APPLY_MOVE: ApplyQueue(s, L"move"); return 0;
+        case IDC_TEXT_ALL: SendMessageW(s->textList, LB_SETSEL, TRUE, static_cast<LPARAM>(-1)); MergeText(s); return 0;
+        case IDC_TEXT_CLEAR: SetWindowTextW(s->textEdit, L""); TextMeta(s); return 0;
+        case IDC_TEXT_NORMALIZE: SetWindowTextW(s->textEdit, Normalize(GetText(s->textEdit)).c_str()); return 0;
+        case IDC_TEXT_COPY: CopyText(s, false); return 0;
+        case IDC_TEXT_PASTE: CopyText(s, true); return 0;
+        case IDC_REGISTER: RegisterMenu(s, true); return 0;
+        case IDC_UNREGISTER: RegisterMenu(s, false); return 0;
+        case IDC_BUILD_CACHE: { HistoryDatabase db; std::wstring err; db.Load(&err); if (!db.WriteMenuCache(L"", &err)) MessageBoxW(hwnd, err.c_str(), L"ClipCue", MB_ICONERROR); else Refresh(s, L"Explorer menu cache rebuilt."); return 0; }
+        case IDC_CLEANUP: { HistoryDatabase db; std::wstring err; db.Load(&err); if (!db.CleanupExpired(90, 365, &err)) MessageBoxW(hwnd, err.c_str(), L"ClipCue", MB_ICONERROR); else { db.WriteMenuCache(L"", nullptr); Refresh(s, L"Expired history cleaned."); } return 0; }
+        case IDC_OPEN_DATA: ShellExecuteW(hwnd, L"open", PathCombineSimple(GetKnownFolderLocalAppData(), L"ClipCue").c_str(), nullptr, nullptr, SW_SHOWNORMAL); return 0;
+        case IDC_INSTALLER: ShellExecuteW(hwnd, L"open", InstallerPath().c_str(), nullptr, ModuleDir().c_str(), SW_SHOWNORMAL); return 0;
         case IDC_REFRESH: Refresh(s); return 0;
-        case IDC_OPEN_DATA: LaunchPath(PathCombineSimple(GetKnownFolderLocalAppData(), L"ClipCue")); return 0;
-        case IDC_REGISTER_MENU: OnRegisterMenu(s, true); return 0;
-        case IDC_UNREGISTER_MENU: OnRegisterMenu(s, false); return 0;
-        case IDC_OPEN_INSTALLER: LaunchPath(InstallerPath()); return 0;
         case IDC_CLOSE: DestroyWindow(hwnd); return 0;
       }
       break;
     }
-    case WM_CTLCOLORSTATIC:
-      if (s && s->background) {
-        SetBkMode(reinterpret_cast<HDC>(wp), TRANSPARENT);
-        return reinterpret_cast<LRESULT>(s->background);
-      }
-      break;
-    case WM_ERASEBKGND:
-      if (s && s->background) {
-        RECT rc{};
-        GetClientRect(hwnd, &rc);
-        FillRect(reinterpret_cast<HDC>(wp), &rc, s->background);
-        return 1;
-      }
-      break;
+    case WM_CTLCOLORSTATIC: { HDC dc = reinterpret_cast<HDC>(wp); SetBkMode(dc, TRANSPARENT); SetTextColor(dc, kText); return reinterpret_cast<LRESULT>(GetStockObject(HOLLOW_BRUSH)); }
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX: { HDC dc = reinterpret_cast<HDC>(wp); SetTextColor(dc, kText); SetBkColor(dc, RGB(255,255,255)); return reinterpret_cast<LRESULT>(s && s->white ? s->white : GetStockObject(WHITE_BRUSH)); }
+    case WM_ERASEBKGND: return 1;
+    case WM_PAINT: { PAINTSTRUCT ps{}; HDC dc = BeginPaint(hwnd, &ps); if (s) Paint(s, dc); EndPaint(hwnd, &ps); return 0; }
     case WM_DESTROY:
-      if (s) {
-        if (s->font) DeleteObject(s->font);
-        if (s->titleFont) DeleteObject(s->titleFont);
-        if (s->background) DeleteObject(s->background);
-        s->font = nullptr;
-        s->titleFont = nullptr;
-        s->background = nullptr;
-      }
-      PostQuitMessage(0);
-      return 0;
+      if (s) { if (s->font) DeleteObject(s->font); if (s->titleFont) DeleteObject(s->titleFont); if (s->sectionFont) DeleteObject(s->sectionFont); if (s->monoFont) DeleteObject(s->monoFont); if (s->white) DeleteObject(s->white); }
+      PostQuitMessage(0); return 0;
   }
   return DefWindowProcW(hwnd, msg, wp, lp);
 }
@@ -905,39 +639,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
-  INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_STANDARD_CLASSES | ICC_TAB_CLASSES | ICC_LISTVIEW_CLASSES};
-  InitCommonControlsEx(&icc);
-
+  INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_STANDARD_CLASSES}; InitCommonControlsEx(&icc);
   auto args = SplitCommandLineArgs();
-  bool queueMode = std::any_of(args.begin(), args.end(), [](const std::wstring& arg) {
-    return arg == L"queue" || arg == L"--queue" || arg == L"/queue" || arg == L"path-queue" || arg == L"--path-queue";
-  });
-
-  UiState state;
-  state.previousForeground = GetForegroundWindow();
-  state.queueMode = queueMode;
-
-  WNDCLASSEXW wc{};
-  wc.cbSize = sizeof(wc);
-  wc.hInstance = instance;
-  wc.lpszClassName = L"ClipCueControlPanelWindow";
-  wc.lpfnWndProc = WndProc;
-  wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-  wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-  wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-  RegisterClassExW(&wc);
-
-  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, queueMode ? L"ClipCue Path Clip Queue" : L"ClipCue Control Panel",
-                              WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                              CW_USEDEFAULT, CW_USEDEFAULT, queueMode ? 990 : 900, queueMode ? 730 : 760, nullptr, nullptr, instance, &state);
+  State state; state.previous = GetForegroundWindow();
+  state.queueOnly = std::any_of(args.begin(), args.end(), [](const std::wstring& a) { return a == L"queue" || a == L"--queue" || a == L"/queue" || a == L"path-queue" || a == L"--path-queue"; });
+  WNDCLASSEXW wc{}; wc.cbSize = sizeof(wc); wc.hInstance = instance; wc.lpszClassName = L"ClipCueModernControlCenter"; wc.lpfnWndProc = WndProc; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION); wc.hbrBackground = nullptr; RegisterClassExW(&wc);
+  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, state.queueOnly ? L"ClipCue Path Clip Queue" : L"ClipCue Control Center", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, state.queueOnly ? 1018 : 1024, state.queueOnly ? 728 : 770, nullptr, nullptr, instance, &state);
   if (!hwnd) return 1;
-  ShowWindow(hwnd, show);
-  UpdateWindow(hwnd);
-
-  MSG m{};
-  while (GetMessageW(&m, nullptr, 0, 0)) {
-    TranslateMessage(&m);
-    DispatchMessageW(&m);
-  }
-  return static_cast<int>(m.wParam);
+  ShowWindow(hwnd, show); UpdateWindow(hwnd);
+  MSG msg{}; while (GetMessageW(&msg, nullptr, 0, 0)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+  return static_cast<int>(msg.wParam);
 }
