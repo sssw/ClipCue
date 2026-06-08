@@ -12,3 +12,4 @@ out/
 *.db-wal
 *.db-shm
 *.zip
+/*.ps1
