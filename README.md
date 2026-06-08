@@ -60,6 +60,9 @@ Open the dedicated Path Clip Queue workspace with:
 .\ClipCue.UI.exe queue
 ```
 
+## Modern UI workflow
+
+This branch includes a modernized native UI workflow for the installer, path target management, path clipboard queue, and clipboard text editing. The redesign keeps the Windows/CMake/C++17 project shape while adding task-focused pages, richer target and queue actions, file import/export for edited text, a larger queue workspace, and a clearer installer plan screen. See [docs/MODERN_UI_WORKFLOW.md](docs/MODERN_UI_WORKFLOW.md).
 ## Quick local test
 
 After building Release x64:
