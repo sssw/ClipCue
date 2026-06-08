@@ -30,6 +30,13 @@ constexpr int IDC_STATUS = 2008;
 constexpr int IDC_CLOSE = 2009;
 constexpr int IDC_OPEN_FOLDER = 2010;
 constexpr int IDC_START_MONITOR = 2011;
+constexpr int IDC_DEFAULT_DIR = 2012;
+constexpr int IDC_PLAN = 2013;
+constexpr int IDC_SOURCE_FOLDER = 2014;
+
+constexpr COLORREF kPageBg = RGB(243, 247, 252);
+constexpr COLORREF kRailBg = RGB(29, 41, 57);
+constexpr COLORREF kText = RGB(51, 65, 85);
 
 constexpr wchar_t kMonitorRunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 constexpr wchar_t kMonitorRunValue[] = L"ClipCue Monitor";
@@ -44,7 +51,13 @@ struct InstallerState {
   HWND startMonitor = nullptr;
   HWND launchUi = nullptr;
   HWND status = nullptr;
+  HWND plan = nullptr;
   HFONT font = nullptr;
+  HFONT smallFont = nullptr;
+  HFONT titleFont = nullptr;
+  HFONT heroFont = nullptr;
+  HBRUSH background = nullptr;
+  HBRUSH railBrush = nullptr;
 };
 
 std::wstring ModuleDir() {
@@ -70,10 +83,18 @@ void SetFont(HWND h, HFONT f) {
   if (h && f) SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
 }
 
-HWND MakeControl(InstallerState* s, const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id) {
-  HWND ctrl = CreateWindowExW(0, cls, text, style, x, y, w, h, s->hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
-  SetFont(ctrl, s->font);
+HWND MakeControl(InstallerState* s, const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id, HFONT font = nullptr, DWORD exStyle = 0) {
+  HWND ctrl = CreateWindowExW(exStyle, cls, text, style, x, y, w, h, s->hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), GetModuleHandleW(nullptr), nullptr);
+  SetFont(ctrl, font ? font : s->font);
   return ctrl;
+}
+
+HWND MakeLabel(InstallerState* s, const wchar_t* text, int x, int y, int w, int h, HFONT font = nullptr) {
+  return MakeControl(s, L"STATIC", text, WS_CHILD | WS_VISIBLE, x, y, w, h, -1, font);
+}
+
+HWND MakeGroup(InstallerState* s, const wchar_t* text, int x, int y, int w, int h) {
+  return MakeControl(s, L"BUTTON", text, WS_CHILD | WS_VISIBLE | BS_GROUPBOX, x, y, w, h, -1, s->font);
 }
 
 void AppendLog(HWND edit, const std::wstring& line) {
@@ -127,7 +148,7 @@ bool CopyOne(const std::wstring& src, const std::wstring& dst, HWND log) {
       return true;
     }
     std::wstringstream ss;
-    ss << L"Copy failed: " << src << L" → " << dst << L" (" << GetLastErrorMessage(err) << L")";
+    ss << L"Copy failed: " << src << L" -> " << dst << L" (" << GetLastErrorMessage(err) << L")";
     AppendLog(log, ss.str());
     return false;
   }
@@ -454,28 +475,105 @@ std::wstring GetEditText(HWND edit) {
 
 bool IsChecked(HWND button) { return SendMessageW(button, BM_GETCHECK, 0, 0) == BST_CHECKED; }
 
-void OnCreate(InstallerState* s) {
-  s->font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-  MakeControl(s, L"STATIC", L"ClipCue Installer", WS_CHILD | WS_VISIBLE, 16, 12, 400, 24, -1);
-  MakeControl(s, L"STATIC", L"Install folder:", WS_CHILD | WS_VISIBLE, 16, 50, 105, 22, -1);
-  s->installDir = MakeControl(s, L"EDIT", ReadInstallDirFromRegistry().c_str(), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 122, 46, 488, 24, IDC_INSTALL_DIR);
-  MakeControl(s, L"BUTTON", L"Browse...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 620, 45, 90, 27, IDC_BROWSE);
+void SetText(HWND hwnd, const std::wstring& text) {
+  if (hwnd) SetWindowTextW(hwnd, text.c_str());
+}
 
-  s->registerShell = MakeControl(s, L"BUTTON", L"Register Explorer classic context menu for current user", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 122, 84, 420, 24, IDC_REGISTER_SHELL);
-  s->shortcuts = MakeControl(s, L"BUTTON", L"Create Start Menu shortcuts", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 122, 112, 300, 24, IDC_SHORTCUTS);
-  s->startMonitor = MakeControl(s, L"BUTTON", L"Start background monitor with tree tray icon at sign-in", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 122, 140, 430, 24, IDC_START_MONITOR);
-  s->launchUi = MakeControl(s, L"BUTTON", L"Launch ClipCue Control Panel after install", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 122, 168, 360, 24, IDC_LAUNCH_UI);
+std::wstring BuildPlan(InstallerState* s) {
+  std::wstring installDir = s && s->installDir ? GetEditText(s->installDir) : ReadInstallDirFromRegistry();
+  std::wstringstream ss;
+  ss << L"Install destination\r\n  " << installDir << L"\r\n\r\n";
+  ss << L"Actions selected\r\n";
+  ss << L"  " << (IsChecked(s->registerShell) ? L"[x]" : L"[ ]") << L" Register Explorer classic context menu\r\n";
+  ss << L"  " << (IsChecked(s->shortcuts) ? L"[x]" : L"[ ]") << L" Create Start Menu shortcuts\r\n";
+  ss << L"  " << (IsChecked(s->startMonitor) ? L"[x]" : L"[ ]") << L" Start background monitor at sign-in\r\n";
+  ss << L"  " << (IsChecked(s->launchUi) ? L"[x]" : L"[ ]") << L" Launch Control Panel after install\r\n\r\n";
+  ss << L"This is a per-user install under HKCU and does not require administrator rights.";
+  return ss.str();
+}
+
+void RefreshPlan(InstallerState* s) {
+  if (s && s->plan) SetText(s->plan, BuildPlan(s));
+}
+
+bool ValidateInstallDir(HWND owner, const std::wstring& target) {
+  if (target.empty()) {
+    MessageBoxW(owner, L"Choose an install folder first.", L"ClipCue", MB_ICONINFORMATION);
+    return false;
+  }
+  if (target.size() < 3) {
+    MessageBoxW(owner, L"Choose a specific folder, not a drive root.", L"ClipCue", MB_ICONINFORMATION);
+    return false;
+  }
+  return true;
+}
+
+void CreateFonts(InstallerState* s) {
+  s->background = CreateSolidBrush(kPageBg);
+  s->railBrush = CreateSolidBrush(kRailBg);
+  s->font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+  s->smallFont = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                             DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+  s->titleFont = CreateFontW(-20, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                             DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+  s->heroFont = CreateFontW(-28, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                            DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+}
+
+void OnCreate(InstallerState* s) {
+  CreateFonts(s);
+  MakeControl(s, L"STATIC", L"ClipCue", WS_CHILD | WS_VISIBLE, 24, 24, 190, 36, -1, s->heroFont);
+  MakeControl(s, L"STATIC", L"Modern installer", WS_CHILD | WS_VISIBLE, 26, 62, 180, 24, -1, s->font);
+  MakeControl(s, L"STATIC", L"1  Choose path", WS_CHILD | WS_VISIBLE, 28, 128, 160, 24, -1, s->font);
+  MakeControl(s, L"STATIC", L"2  Pick options", WS_CHILD | WS_VISIBLE, 28, 164, 160, 24, -1, s->font);
+  MakeControl(s, L"STATIC", L"3  Install / repair", WS_CHILD | WS_VISIBLE, 28, 200, 170, 24, -1, s->font);
+  MakeControl(s, L"STATIC", L"Per-user. No admin rights required.", WS_CHILD | WS_VISIBLE, 26, 530, 190, 40, -1, s->smallFont);
+
+  MakeControl(s, L"STATIC", L"Install ClipCue", WS_CHILD | WS_VISIBLE, 242, 26, 280, 32, -1, s->heroFont);
+  MakeControl(s, L"STATIC", L"Set the destination, integrations, and post-install flow in one screen.", WS_CHILD | WS_VISIBLE,
+              244, 62, 560, 24, -1, s->font);
+
+  MakeGroup(s, L"Destination", 242, 104, 610, 108);
+  MakeLabel(s, L"Install folder", 264, 136, 120, 24, s->font);
+  s->installDir = MakeControl(s, L"EDIT", ReadInstallDirFromRegistry().c_str(), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+                              386, 132, 328, 30, IDC_INSTALL_DIR, s->font, WS_EX_CLIENTEDGE);
+  MakeControl(s, L"BUTTON", L"Browse...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 724, 130, 100, 34, IDC_BROWSE);
+  MakeControl(s, L"BUTTON", L"Default", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 386, 170, 88, 30, IDC_DEFAULT_DIR);
+  MakeControl(s, L"BUTTON", L"Open source folder", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 486, 170, 148, 30, IDC_SOURCE_FOLDER);
+  MakeControl(s, L"BUTTON", L"Open install folder", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 646, 170, 148, 30, IDC_OPEN_FOLDER);
+
+  MakeGroup(s, L"Options", 242, 232, 294, 178);
+  s->registerShell = MakeControl(s, L"BUTTON", L"Explorer classic context menu", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                                 264, 264, 240, 24, IDC_REGISTER_SHELL);
+  s->shortcuts = MakeControl(s, L"BUTTON", L"Start Menu shortcuts", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                             264, 294, 210, 24, IDC_SHORTCUTS);
+  s->startMonitor = MakeControl(s, L"BUTTON", L"Background monitor at sign-in", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                                264, 324, 250, 24, IDC_START_MONITOR);
+  s->launchUi = MakeControl(s, L"BUTTON", L"Launch Control Panel after install", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                            264, 354, 250, 24, IDC_LAUNCH_UI);
   SendMessageW(s->registerShell, BM_SETCHECK, BST_CHECKED, 0);
   SendMessageW(s->shortcuts, BM_SETCHECK, BST_CHECKED, 0);
   SendMessageW(s->startMonitor, BM_SETCHECK, BST_CHECKED, 0);
   SendMessageW(s->launchUi, BM_SETCHECK, BST_CHECKED, 0);
 
-  MakeControl(s, L"BUTTON", L"Install / Repair", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 122, 204, 130, 32, IDC_INSTALL);
-  MakeControl(s, L"BUTTON", L"Uninstall", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 262, 204, 100, 32, IDC_UNINSTALL);
-  MakeControl(s, L"BUTTON", L"Open folder", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 372, 204, 100, 32, IDC_OPEN_FOLDER);
-  MakeControl(s, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 610, 204, 100, 32, IDC_CLOSE);
+  MakeGroup(s, L"Plan", 558, 232, 294, 178);
+  s->plan = MakeControl(s, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
+                        578, 262, 252, 128, IDC_PLAN, s->smallFont, WS_EX_CLIENTEDGE);
 
-  s->status = MakeControl(s, L"EDIT", L"Ready. This installer performs a per-user install and does not require administrator rights.\r\n", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_READONLY | WS_VSCROLL, 16, 252, 694, 226, IDC_STATUS);
+  MakeControl(s, L"BUTTON", L"Install / Repair", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 242, 432, 150, 38, IDC_INSTALL);
+  MakeControl(s, L"BUTTON", L"Uninstall", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 404, 432, 108, 38, IDC_UNINSTALL);
+  MakeControl(s, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 744, 432, 108, 38, IDC_CLOSE);
+
+  MakeGroup(s, L"Activity", 242, 492, 610, 118);
+  s->status = MakeControl(s, L"EDIT", L"Ready. This installer performs a per-user install and keeps user data under %LOCALAPPDATA%\\ClipCue during uninstall.\r\n",
+                          WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
+                          264, 520, 566, 72, IDC_STATUS, s->smallFont, WS_EX_CLIENTEDGE);
+  RefreshPlan(s);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -492,20 +590,34 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       OnCreate(s);
       return 0;
     case WM_COMMAND: {
-      switch (LOWORD(wp)) {
+      int id = LOWORD(wp);
+      int notify = HIWORD(wp);
+      if ((id == IDC_INSTALL_DIR && notify == EN_CHANGE) || id == IDC_REGISTER_SHELL || id == IDC_SHORTCUTS || id == IDC_START_MONITOR || id == IDC_LAUNCH_UI) {
+        RefreshPlan(s);
+      }
+      switch (id) {
         case IDC_BROWSE: {
           std::wstring folder = PickFolder(hwnd, GetEditText(s->installDir));
-          if (!folder.empty()) SetWindowTextW(s->installDir, folder.c_str());
+          if (!folder.empty()) SetText(s->installDir, folder);
+          RefreshPlan(s);
           return 0;
         }
+        case IDC_DEFAULT_DIR:
+          SetText(s->installDir, DefaultInstallDir());
+          RefreshPlan(s);
+          return 0;
+        case IDC_SOURCE_FOLDER:
+          ShellExecuteW(hwnd, L"open", ModuleDir().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+          return 0;
         case IDC_INSTALL: {
           SetCursor(LoadCursorW(nullptr, IDC_WAIT));
           std::wstring target = GetEditText(s->installDir);
-          bool ok = InstallTo(ModuleDir(), target, IsChecked(s->registerShell), IsChecked(s->shortcuts), IsChecked(s->startMonitor), s->status);
+          bool ok = ValidateInstallDir(hwnd, target) && InstallTo(ModuleDir(), target, IsChecked(s->registerShell), IsChecked(s->shortcuts), IsChecked(s->startMonitor), s->status);
           SetCursor(LoadCursorW(nullptr, IDC_ARROW));
           if (ok && IsChecked(s->launchUi)) {
             ShellExecuteW(hwnd, L"open", PathCombineSimple(target, L"ClipCue.UI.exe").c_str(), nullptr, target.c_str(), SW_SHOWNORMAL);
           }
+          RefreshPlan(s);
           return 0;
         }
         case IDC_UNINSTALL: {
@@ -514,6 +626,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             UninstallFrom(GetEditText(s->installDir), s->status);
             SetCursor(LoadCursorW(nullptr, IDC_ARROW));
           }
+          RefreshPlan(s);
           return 0;
         }
         case IDC_OPEN_FOLDER:
@@ -525,7 +638,42 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       }
       break;
     }
+    case WM_CTLCOLORSTATIC:
+      if (s && s->background) {
+        HDC dc = reinterpret_cast<HDC>(wp);
+        HWND control = reinterpret_cast<HWND>(lp);
+        RECT controlRect{};
+        GetWindowRect(control, &controlRect);
+        MapWindowPoints(nullptr, hwnd, reinterpret_cast<POINT*>(&controlRect), 2);
+        SetBkMode(dc, TRANSPARENT);
+        if (controlRect.left < 216) {
+          SetTextColor(dc, RGB(255, 255, 255));
+          return reinterpret_cast<LRESULT>(s->railBrush ? s->railBrush : s->background);
+        }
+        SetTextColor(dc, kText);
+        return reinterpret_cast<LRESULT>(s->background);
+      }
+      break;
+    case WM_ERASEBKGND:
+      if (s && s->background) {
+        RECT rc{};
+        GetClientRect(hwnd, &rc);
+        FillRect(reinterpret_cast<HDC>(wp), &rc, s->background);
+        RECT rail = rc;
+        rail.right = 216;
+        FillRect(reinterpret_cast<HDC>(wp), &rail, s->railBrush ? s->railBrush : s->background);
+        return 1;
+      }
+      break;
     case WM_DESTROY:
+      if (s) {
+        if (s->font) DeleteObject(s->font);
+        if (s->smallFont) DeleteObject(s->smallFont);
+        if (s->titleFont) DeleteObject(s->titleFont);
+        if (s->heroFont) DeleteObject(s->heroFont);
+        if (s->background) DeleteObject(s->background);
+        if (s->railBrush) DeleteObject(s->railBrush);
+      }
       PostQuitMessage(0);
       return 0;
   }
@@ -572,7 +720,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   RegisterClassExW(&wc);
 
   HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"ClipCue Installer", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                              CW_USEDEFAULT, CW_USEDEFAULT, 745, 530, nullptr, nullptr, instance, &state);
+                              CW_USEDEFAULT, CW_USEDEFAULT, 890, 660, nullptr, nullptr, instance, &state);
   if (!hwnd) return 1;
   ShowWindow(hwnd, show);
   UpdateWindow(hwnd);

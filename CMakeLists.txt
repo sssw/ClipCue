@@ -78,10 +78,10 @@ add_executable(ClipCue.Monitor WIN32 src/monitor/Monitor.cpp)
 target_link_libraries(ClipCue.Monitor PRIVATE clipcue_common shell32 gdi32)
 
 add_executable(ClipCue.UI WIN32 src/ui/ClipCueUI.cpp)
-target_link_libraries(ClipCue.UI PRIVATE clipcue_common comctl32 comdlg32 ole32 shell32 shlwapi)
+target_link_libraries(ClipCue.UI PRIVATE clipcue_common comctl32 comdlg32 ole32 shell32 shlwapi gdi32)
 
 add_executable(ClipCue.Installer WIN32 src/installer/Installer.cpp)
-target_link_libraries(ClipCue.Installer PRIVATE clipcue_common comctl32 ole32 shell32 shlwapi advapi32)
+target_link_libraries(ClipCue.Installer PRIVATE clipcue_common comctl32 ole32 shell32 shlwapi advapi32 gdi32)
 
 add_library(ClipCue.ShellClassic SHARED
   src/shell_classic/ShellClassic.cpp
